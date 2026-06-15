@@ -1,6 +1,6 @@
 # Notizen
 
-Eine kleine Notizen-App für den Browser. Die Anwendung läuft komplett lokal, benötigt kein Backend und kann als statische Webseite zum Beispiel über GitHub Pages veröffentlicht werden.
+Eine kleine Notizen-App für den Browser.
 
 ## Überblick
 
@@ -48,10 +48,6 @@ python -m http.server 8000
 ```
 
 Danach ist die Seite unter `http://localhost:8000` erreichbar.
-
-## GitHub Pages
-
-Für die Veröffentlichung reicht ein normales GitHub-Repository mit den enthaltenen Dateien. In den Repository-Einstellungen kann unter **Pages** der gewünschte Branch und Ordner ausgewählt werden. Ein Build-Schritt ist nicht erforderlich.
 
 ## Speicherung
 
