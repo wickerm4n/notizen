@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Notizen App">
+  <defs>
+    <linearGradient id="bg" x1="20" y1="12" x2="108" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6f9df6"/>
+      <stop offset="1" stop-color="#244a80"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#132747" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <path d="M34 24h48l18 18v62H34z" fill="#ffffff" opacity="0.96"/>
+    <path d="M82 24v20h18z" fill="#d9e6ff"/>
+    <path d="M48 54h34M48 68h30M48 82h22" fill="none" stroke="#2f5f9e" stroke-width="6" stroke-linecap="round"/>
+    <path d="M35 24h47l18 18" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.5"/>
+  </g>
+</svg>
