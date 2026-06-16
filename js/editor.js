@@ -50,7 +50,7 @@
         event.preventDefault();
         handlers.onSaveNow();
       }
-      if (event.key === "Escape" && isFullscreen()) {
+      if (!event.defaultPrevented && event.key === "Escape" && isFullscreen()) {
         toggleFullscreen(false);
         handlers.onFullscreenChange(false);
       }
@@ -208,7 +208,7 @@
     clearPendingFullscreenTimer();
 
     if (nextState) {
-      document.body.classList.remove("sidebar-open");
+      document.body.classList.remove("sidebar-open", "sidebar-closing");
       document.body.classList.add("fullscreen-sidebar-hidden");
       if (shouldApplyFullscreenImmediately()) {
         elements.workspace.classList.add("is-fullscreen");
@@ -225,7 +225,7 @@
     }
 
     elements.workspace.classList.remove("is-fullscreen");
-    document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition");
+    document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition", "sidebar-open", "sidebar-closing");
     setFullscreenButtonState(false);
     return false;
   }

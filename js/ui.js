@@ -26,8 +26,11 @@
     ["exportTitle", "exportTitle"],
     ["exportFormat", "exportFormat"]
   ];
+  const SIDEBAR_TRANSITION_MS = 240;
   let tooltipTarget = null;
   let contextMenuHandler = null;
+  let sidebarCloseTimer = 0;
+  let mobileLayoutQuery = null;
 
   function init(callbacks = {}) {
     if (!collectElements()) {
@@ -48,6 +51,8 @@
     initTooltips();
     initContextMenu();
     initAnimatedDialogs();
+    initSidebarLayoutWatcher();
+    syncSidebarA11y(false);
     return true;
   }
 
@@ -115,6 +120,7 @@
       if (event.key === "Escape") {
         closeContextMenu();
         if (document.body.classList.contains("sidebar-open")) {
+          event.preventDefault();
           setSidebarOpen(false);
         }
       }
@@ -410,6 +416,10 @@
 
   function setSidebarOpen(open) {
     const isOpen = Boolean(open);
+    const wasOpen = document.body.classList.contains("sidebar-open");
+
+    clearSidebarCloseTimer();
+
     if (isOpen && shouldExitFullscreenBeforeOpeningSidebar()) {
       App.Editor.exitFullscreen();
       document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition");
@@ -418,21 +428,102 @@
         workspace.classList.remove("is-fullscreen");
       }
     }
-    document.body.classList.toggle("sidebar-open", isOpen);
+
+    document.body.classList.remove("sidebar-closing");
+
+    if (isOpen) {
+      document.body.classList.add("sidebar-open");
+      syncSidebarA11y(true);
+      return;
+    }
+
+    if (wasOpen && isMobileFullscreenSidebarState()) {
+      document.body.classList.add("sidebar-closing");
+      sidebarCloseTimer = global.setTimeout(() => {
+        document.body.classList.remove("sidebar-closing");
+        sidebarCloseTimer = 0;
+      }, SIDEBAR_TRANSITION_MS);
+    }
+
+    document.body.classList.remove("sidebar-open");
+    syncSidebarA11y(false);
   }
 
   function shouldExitFullscreenBeforeOpeningSidebar() {
     if (!App.Editor || typeof App.Editor.exitFullscreen !== "function") {
       return false;
     }
-    if (isMobileLayout() && typeof App.Editor.isFullscreen === "function" && App.Editor.isFullscreen()) {
+    if (isMobileFullscreenSidebarState()) {
       return false;
     }
     return true;
   }
 
+  function isMobileFullscreenSidebarState() {
+    return isMobileLayout()
+      && typeof App.Editor.isFullscreen === "function"
+      && App.Editor.isFullscreen();
+  }
+
   function isMobileLayout() {
-    return Boolean(global.matchMedia && global.matchMedia(MOBILE_LAYOUT_QUERY).matches);
+    const query = getMobileLayoutQuery();
+    return Boolean(query && query.matches);
+  }
+
+  function getMobileLayoutQuery() {
+    if (!global.matchMedia) {
+      return null;
+    }
+    if (!mobileLayoutQuery) {
+      mobileLayoutQuery = global.matchMedia(MOBILE_LAYOUT_QUERY);
+    }
+    return mobileLayoutQuery;
+  }
+
+  function initSidebarLayoutWatcher() {
+    const query = getMobileLayoutQuery();
+    if (!query) {
+      return;
+    }
+    const onLayoutChange = () => {
+      if (!query.matches) {
+        clearSidebarCloseTimer();
+        document.body.classList.remove("sidebar-closing");
+      }
+      syncSidebarA11y(document.body.classList.contains("sidebar-open"));
+    };
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", onLayoutChange);
+    } else if (typeof query.addListener === "function") {
+      query.addListener(onLayoutChange);
+    }
+    global.addEventListener("resize", onLayoutChange);
+  }
+
+  function clearSidebarCloseTimer() {
+    if (!sidebarCloseTimer) {
+      return;
+    }
+    global.clearTimeout(sidebarCloseTimer);
+    sidebarCloseTimer = 0;
+  }
+
+  function syncSidebarA11y(isOpen) {
+    const sidebar = document.getElementById("sidebar");
+    if (sidebar) {
+      sidebar.setAttribute("aria-hidden", String(!isOpen && isMobileLayout()));
+    }
+    if (elements.sidebarScrim) {
+      elements.sidebarScrim.setAttribute("aria-hidden", String(!isOpen));
+      elements.sidebarScrim.tabIndex = isOpen ? 0 : -1;
+    }
+    const label = isOpen ? "Notizliste schließen" : "Notizliste öffnen";
+    document.querySelectorAll("#openSidebarButton, #fullscreenSidebarButton").forEach((button) => {
+      button.setAttribute("aria-expanded", String(isOpen));
+      button.setAttribute("aria-label", label);
+      button.dataset.tooltip = label;
+      button.classList.toggle("is-active", isOpen);
+    });
   }
 
   function toggleSidebar() {
