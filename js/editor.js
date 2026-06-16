@@ -275,6 +275,7 @@
     setViewMode,
     setPinned,
     setControlsEnabled,
+    isFullscreen,
     exitFullscreen,
     getTitle,
     getContent

@@ -13,6 +13,13 @@
   const MAX_IMPORT_NOTES = 200;
   const MAX_NOTE_CONTENT_LENGTH = 500000;
   const MAX_NOTE_TITLE_LENGTH = 120;
+  const TEXT_IMPORT_EXTENSIONS = new Set([
+    "txt", "text", "md", "markdown", "mdown", "log", "csv", "tsv", "yaml", "yml",
+    "xml", "html", "htm", "css", "js", "mjs", "cjs", "ts", "tsx", "jsx", "ini",
+    "conf", "config", "toml", "env", "sql", "py", "ps1", "sh", "bat", "cmd",
+    "php", "rb", "go", "rs", "java", "c", "cpp", "h", "hpp", "cs", "swift",
+    "kt", "dart", "vue", "svelte"
+  ]);
 
   function makeId() {
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
@@ -240,7 +247,8 @@
 
   function titleFromFileName(fileName) {
     const rawName = String(fileName || "Importierte Notiz").split(/[\\/]/).pop() || "Importierte Notiz";
-    return cleanTitle(rawName.replace(/\.(json|md|txt)$/i, "")) || "Importierte Notiz";
+    const title = rawName.startsWith(".") ? rawName : rawName.replace(/\.[^.]+$/i, "");
+    return cleanTitle(title) || "Importierte Notiz";
   }
 
   function normalizeImportedNote(input, sourceName) {
@@ -275,10 +283,34 @@
     };
   }
 
-  function parseImportData(text, fileName) {
+  function extensionFromFileName(fileName) {
+    const name = String(fileName || "").split(/[\\/]/).pop() || "";
+    const match = name.match(/\.([^.]+)$/);
+    return match ? match[1].toLowerCase() : "";
+  }
+
+  function isTextDocument(fileName, mimeType) {
+    const type = String(mimeType || "").toLowerCase();
+    const extension = extensionFromFileName(fileName);
+    return type.startsWith("text/")
+      || type === "application/x-ndjson"
+      || type === "application/xml"
+      || type === "application/yaml"
+      || type === "application/x-yaml"
+      || TEXT_IMPORT_EXTENSIONS.has(extension)
+      || !extension;
+  }
+
+  function parseImportData(text, fileName, mimeType = "") {
     const content = String(text ?? "");
     const trimmed = content.trim();
-    const lowerName = String(fileName || "").toLowerCase();
+    const lowerType = String(mimeType || "").toLowerCase();
+    const extension = extensionFromFileName(fileName);
+    const explicitJsonDocument = extension === "json"
+      || lowerType === "application/json"
+      || lowerType.endsWith("+json");
+    const explicitTextDocument = !explicitJsonDocument
+      && (lowerType.startsWith("text/") || TEXT_IMPORT_EXTENSIONS.has(extension));
 
     if (!trimmed) {
       throw new Error("Die Importdatei ist leer.");
@@ -288,7 +320,8 @@
       throw new Error("Die Importdatei ist zu groß. Maximal 5 MB sind erlaubt.");
     }
 
-    const looksLikeJson = lowerName.endsWith(".json") || trimmed.startsWith("{") || trimmed.startsWith("[");
+    const looksLikeJson = explicitJsonDocument
+      || (!explicitTextDocument && (trimmed.startsWith("{") || trimmed.startsWith("[")));
     if (looksLikeJson) {
       let data;
       try {
@@ -333,7 +366,7 @@
       return { notes, skipped: errors.length };
     }
 
-    if (lowerName.endsWith(".md") || lowerName.endsWith(".txt") || !lowerName.includes(".")) {
+    if (isTextDocument(fileName, mimeType)) {
       ensureContentSize(content);
       const now = new Date().toISOString();
       return {

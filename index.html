@@ -7,10 +7,10 @@
   <meta name="description" content="Eine moderne, lokale Notizen-App für GitHub Pages.">
   <meta name="theme-color" content="#2f5f9e">
   <title>Notizen</title>
-  <link rel="icon" href="icons/favicon.svg?v=2026.06.16.6" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.16.6">
-  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.16.6">
-  <link rel="stylesheet" href="css/styles.css?v=2026.06.16.6">
+  <link rel="icon" href="icons/favicon.svg?v=2026.06.16.7" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.16.7">
+  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.16.7">
+  <link rel="stylesheet" href="css/styles.css?v=2026.06.16.7">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
@@ -34,7 +34,7 @@
   <div class="app-shell" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Notiznavigation">
       <div class="brand">
-        <img src="icons/app-icon.svg?v=2026.06.16.6" width="42" height="42" alt="">
+        <img src="icons/app-icon.svg?v=2026.06.16.7" width="42" height="42" alt="">
         <div>
           <strong>Notizen</strong>
           <span>Lokal und privat</span>
@@ -293,7 +293,7 @@
     </form>
   </dialog>
 
-  <input id="importInput" type="file" accept=".json,.txt,.md,application/json,text/plain,text/markdown" hidden>
+  <input id="importInput" type="file" accept=".json,.txt,.md,.markdown,.text,.log,.csv,.yaml,.yml,.xml,.html,.css,.js,.ts,.ini,.conf,.toml,.sql,application/json,text/*" multiple hidden>
   <nav class="context-menu" id="noteContextMenu" aria-label="Notiz-Kontextmenü" hidden>
     <button type="button" data-context-action="open">
       <svg class="icon"><use href="#icon-edit"></use></svg>
@@ -323,13 +323,13 @@
   </nav>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="js/storage.js?v=2026.06.16.6" defer></script>
-  <script src="js/notes.js?v=2026.06.16.6" defer></script>
-  <script src="js/markdown.js?v=2026.06.16.6" defer></script>
-  <script src="js/settings.js?v=2026.06.16.6" defer></script>
-  <script src="js/editor.js?v=2026.06.16.6" defer></script>
-  <script src="js/ui.js?v=2026.06.16.6" defer></script>
-  <script src="js/app.js?v=2026.06.16.6" defer></script>
-  <script src="js/update.js?v=2026.06.16.6" data-app-version="2026.06.16.6" defer></script>
+  <script src="js/storage.js?v=2026.06.16.7" defer></script>
+  <script src="js/notes.js?v=2026.06.16.7" defer></script>
+  <script src="js/markdown.js?v=2026.06.16.7" defer></script>
+  <script src="js/settings.js?v=2026.06.16.7" defer></script>
+  <script src="js/editor.js?v=2026.06.16.7" defer></script>
+  <script src="js/ui.js?v=2026.06.16.7" defer></script>
+  <script src="js/app.js?v=2026.06.16.7" defer></script>
+  <script src="js/update.js?v=2026.06.16.7" data-app-version="2026.06.16.7" defer></script>
 </body>
 </html>

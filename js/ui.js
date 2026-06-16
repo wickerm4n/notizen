@@ -2,6 +2,7 @@
   "use strict";
 
   const App = global.NotizenApp || (global.NotizenApp = {});
+  const MOBILE_LAYOUT_QUERY = "(max-width: 980px), (max-height: 560px) and (hover: none)";
   const elements = {};
   const REQUIRED_ELEMENTS = [
     ["noteList", "noteList"],
@@ -409,7 +410,7 @@
 
   function setSidebarOpen(open) {
     const isOpen = Boolean(open);
-    if (isOpen && App.Editor && typeof App.Editor.exitFullscreen === "function") {
+    if (isOpen && shouldExitFullscreenBeforeOpeningSidebar()) {
       App.Editor.exitFullscreen();
       document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition");
       const workspace = document.getElementById("workspace");
@@ -418,6 +419,20 @@
       }
     }
     document.body.classList.toggle("sidebar-open", isOpen);
+  }
+
+  function shouldExitFullscreenBeforeOpeningSidebar() {
+    if (!App.Editor || typeof App.Editor.exitFullscreen !== "function") {
+      return false;
+    }
+    if (isMobileLayout() && typeof App.Editor.isFullscreen === "function" && App.Editor.isFullscreen()) {
+      return false;
+    }
+    return true;
+  }
+
+  function isMobileLayout() {
+    return Boolean(global.matchMedia && global.matchMedia(MOBILE_LAYOUT_QUERY).matches);
   }
 
   function toggleSidebar() {

@@ -984,6 +984,38 @@ textarea::placeholder {
   border-left-color: var(--danger);
 }
 
+body.is-dragging-files::before,
+body.is-dragging-files::after {
+  position: fixed;
+  z-index: 150;
+  pointer-events: none;
+}
+
+body.is-dragging-files::before {
+  content: "";
+  inset: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--accent-soft) 74%, transparent);
+  border: 2px dashed color-mix(in srgb, var(--accent) 82%, var(--text));
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow);
+}
+
+body.is-dragging-files::after {
+  content: "Textdateien loslassen";
+  left: 50%;
+  top: 50%;
+  max-width: min(360px, calc(100vw - 48px));
+  padding: 14px 18px;
+  color: var(--text);
+  font-weight: 800;
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transform: translate(-50%, -50%);
+}
+
 .context-menu {
   position: fixed;
   z-index: 140;
@@ -1185,11 +1217,22 @@ body:not(.show-counters) #charCount {
   }
 
   body.sidebar-open .sidebar {
+    opacity: 1;
+    filter: blur(0);
+    pointer-events: auto;
     transform: translateX(0);
   }
 
   body.sidebar-open .workspace {
     transform: none;
+  }
+
+  body.sidebar-open.fullscreen-sidebar-hidden .sidebar {
+    z-index: 90;
+  }
+
+  body.sidebar-open.fullscreen-sidebar-hidden .scrim {
+    z-index: 80;
   }
 
   .scrim {

@@ -13,6 +13,9 @@
   const selectedIds = new Set();
   const MAX_STORED_ID_LENGTH = 160;
   const MAX_STORED_CONTENT_LENGTH = 500000;
+  const MAX_IMPORT_FILES = 30;
+  const MAX_IMPORT_TOTAL_BYTES = 20 * 1024 * 1024;
+  let dragImportDepth = 0;
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -133,6 +136,7 @@
       }
     });
     onElement("importInput", "change", handleImport);
+    bindDragAndDropImport();
 
     const persistBeforeLeaving = () => {
       if (settings.autoSave && selectedId) {
@@ -368,10 +372,10 @@
 
   async function saveCurrentNote(silent) {
     if (!selectedId) {
-      return;
+      return true;
     }
     clearTimeout(saveTimer);
-    await saveNoteById(selectedId, silent);
+    return saveNoteById(selectedId, silent);
   }
 
   async function saveNoteById(id, silent) {
@@ -589,29 +593,153 @@
 
   async function handleImport(event) {
     const input = event.currentTarget;
-    const file = input.files && input.files[0];
+    const files = Array.from(input.files || []);
     input.value = "";
-    if (!file) {
+    await importFiles(files);
+  }
+
+  function bindDragAndDropImport() {
+    const root = document.documentElement;
+    const clearDragState = () => {
+      dragImportDepth = 0;
+      document.body.classList.remove("is-dragging-files");
+    };
+
+    document.addEventListener("dragenter", (event) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      dragImportDepth += 1;
+      document.body.classList.add("is-dragging-files");
+    });
+
+    document.addEventListener("dragover", (event) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      document.body.classList.add("is-dragging-files");
+    });
+
+    document.addEventListener("dragleave", (event) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      dragImportDepth = Math.max(0, dragImportDepth - 1);
+      const leftWindow = event.clientX <= 0
+        || event.clientY <= 0
+        || event.clientX >= root.clientWidth
+        || event.clientY >= root.clientHeight;
+      if (dragImportDepth === 0 || leftWindow) {
+        clearDragState();
+      }
+    });
+
+    document.addEventListener("drop", async (event) => {
+      if (!dataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      const files = Array.from(event.dataTransfer.files || []);
+      clearDragState();
+      await importFiles(files);
+    });
+
+    document.addEventListener("dragend", clearDragState);
+  }
+
+  function dataTransferHasFiles(dataTransfer) {
+    if (!dataTransfer) {
+      return false;
+    }
+    if (dataTransfer.files && dataTransfer.files.length) {
+      return true;
+    }
+    const types = dataTransfer.types ? Array.from(dataTransfer.types) : [];
+    return types.includes("Files") || types.includes("application/x-moz-file");
+  }
+
+  async function importFiles(fileList) {
+    const allFiles = Array.from(fileList || []).filter(Boolean);
+    if (!allFiles.length) {
       return;
     }
 
-    if (file.size > App.Storage.MAX_IMPORT_FILE_BYTES) {
-      App.UI.showToast("Die Importdatei ist zu groß. Maximal 5 MB sind erlaubt.", "error");
+    if (allFiles.length > MAX_IMPORT_FILES) {
+      App.UI.showToast(`Maximal ${MAX_IMPORT_FILES} Dateien auf einmal importieren.`, "error");
+      return;
+    }
+
+    const totalBytes = allFiles.reduce((sum, file) => sum + Math.max(0, Number(file.size) || 0), 0);
+    if (totalBytes > MAX_IMPORT_TOTAL_BYTES) {
+      App.UI.showToast("Die abgelegten Dateien sind zusammen zu groß. Maximal 20 MB sind erlaubt.", "error");
+      return;
+    }
+
+    const importedNotes = [];
+    const errors = [];
+    let skippedEntries = 0;
+
+    await saveCurrentNote(true);
+
+    for (const file of allFiles) {
+      if (!file || typeof file.name !== "string") {
+        continue;
+      }
+      if (file.size > App.Storage.MAX_IMPORT_FILE_BYTES) {
+        errors.push(`${file.name}: Datei ist zu groß.`);
+        continue;
+      }
+
+      try {
+        const text = await readFileText(file);
+        const result = App.Storage.parseImportData(text, file.name, file.type);
+        importedNotes.push(...result.notes);
+        skippedEntries += result.skipped || 0;
+      } catch (error) {
+        errors.push(`${file.name}: ${error.message || "Import fehlgeschlagen."}`);
+      }
+    }
+
+    if (!importedNotes.length) {
+      App.UI.showToast(errors[0] || "Import fehlgeschlagen.", "error");
       return;
     }
 
     try {
-      const text = await file.text();
-      const result = App.Storage.parseImportData(text, file.name);
-      await storage.saveNotes(result.notes);
-      notes.push(...result.notes);
+      await storage.saveNotes(importedNotes);
+      notes.push(...importedNotes);
       selectedIds.clear();
-      await selectNote(result.notes[0].id);
-      const suffix = result.skipped ? ` ${result.skipped} beschädigte Einträge wurden übersprungen.` : "";
-      App.UI.showToast(`${result.notes.length} ${result.notes.length === 1 ? "Notiz" : "Notizen"} importiert.${suffix}`);
+      await selectNote(importedNotes[0].id);
+      const suffixParts = [];
+      if (skippedEntries) {
+        suffixParts.push(`${skippedEntries} beschädigte Einträge wurden übersprungen.`);
+      }
+      if (errors.length) {
+        suffixParts.push(`${errors.length} ${errors.length === 1 ? "Datei wurde" : "Dateien wurden"} übersprungen.`);
+      }
+      const suffix = suffixParts.length ? ` ${suffixParts.join(" ")}` : "";
+      App.UI.showToast(`${importedNotes.length} ${importedNotes.length === 1 ? "Notiz" : "Notizen"} importiert.${suffix}`);
     } catch (error) {
-      App.UI.showToast(error.message || "Import fehlgeschlagen.", "error");
+      App.UI.showToast("Die importierten Notizen konnten nicht gespeichert werden.", "error");
     }
+  }
+
+  function readFileText(file) {
+    if (file && typeof file.text === "function") {
+      return file.text();
+    }
+    if (typeof FileReader === "undefined") {
+      return Promise.reject(new Error("Dieser Browser kann die Datei nicht lesen."));
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Datei konnte nicht gelesen werden."));
+      reader.readAsText(file);
+    });
   }
 
   async function openSettings() {
