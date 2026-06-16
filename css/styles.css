@@ -170,6 +170,7 @@ body.fullscreen-sidebar-hidden .sidebar {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .brand img {
@@ -182,6 +183,10 @@ body.fullscreen-sidebar-hidden .sidebar {
   display: block;
 }
 
+.brand > div {
+  min-width: 0;
+}
+
 .brand strong {
   font-size: 1.08rem;
 }
@@ -189,6 +194,10 @@ body.fullscreen-sidebar-hidden .sidebar {
 .brand span {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.sidebar-close-button {
+  margin-left: auto;
 }
 
 .button,
@@ -655,6 +664,12 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+
+.editor-pane:focus-within,
+.preview-pane:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow);
 }
 
 .editor-pane {
@@ -1142,6 +1157,7 @@ body:not(.show-counters) #charCount {
 @media (max-width: 980px), (max-height: 560px) and (hover: none) {
   .app-shell {
     --drawer-width: min(var(--sidebar-width), calc(100vw - 48px));
+    --workspace-shift: clamp(10px, 5vw, 28px);
     grid-template-columns: 1fr;
   }
 
@@ -1162,6 +1178,7 @@ body:not(.show-counters) #charCount {
     transform: translateX(-105%);
     transition: transform 220ms ease, opacity 220ms ease, filter 220ms ease;
     box-shadow: var(--shadow);
+    z-index: 40;
   }
 
   body.sidebar-open .sidebar {
@@ -1169,14 +1186,14 @@ body:not(.show-counters) #charCount {
   }
 
   body.sidebar-open .workspace {
-    transform: translateX(var(--drawer-width));
+    transform: translateX(var(--workspace-shift));
   }
 
   .scrim {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 15;
+    z-index: 30;
     background: rgba(8, 14, 28, 0.46);
     border: 0;
     opacity: 0;
@@ -1196,9 +1213,15 @@ body:not(.show-counters) #charCount {
     align-content: flex-start;
   }
 
+  .sidebar .brand {
+    align-items: center;
+  }
+
   .title-input {
     order: 2;
     flex-basis: 100%;
+    background: var(--surface-soft);
+    border-color: var(--border);
   }
 
   .toolbar-actions {
@@ -1243,6 +1266,18 @@ body:not(.show-counters) #charCount {
   .editor-pane,
   .preview-pane {
     min-height: 220px;
+    background: color-mix(in srgb, var(--surface) 88%, var(--surface-hover));
+    border-color: color-mix(in srgb, var(--border) 72%, var(--accent));
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+  }
+
+  textarea,
+  .preview-pane {
+    padding: clamp(20px, 5vw, 30px);
+  }
+
+  textarea::placeholder {
+    color: color-mix(in srgb, var(--text) 58%, transparent);
   }
 
   .settings-grid {

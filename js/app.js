@@ -57,7 +57,8 @@
   function bindEvents() {
     onElement("newNoteButton", "click", createNewNote);
     onElement("emptyNewNoteButton", "click", createNewNote);
-    onElement("openSidebarButton", "click", () => App.UI.setSidebarOpen(true));
+    onElement("openSidebarButton", "click", () => App.UI.toggleSidebar());
+    onElement("closeSidebarButton", "click", () => App.UI.setSidebarOpen(false));
     onElement("sidebarScrim", "click", () => App.UI.setSidebarOpen(false));
 
     onElement("noteList", "click", async (event) => {

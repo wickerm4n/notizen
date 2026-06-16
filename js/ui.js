@@ -113,6 +113,9 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         closeContextMenu();
+        if (document.body.classList.contains("sidebar-open")) {
+          setSidebarOpen(false);
+        }
       }
     });
 
@@ -405,7 +408,12 @@
   }
 
   function setSidebarOpen(open) {
-    document.body.classList.toggle("sidebar-open", open);
+    const isOpen = Boolean(open);
+    document.body.classList.toggle("sidebar-open", isOpen);
+  }
+
+  function toggleSidebar() {
+    setSidebarOpen(!document.body.classList.contains("sidebar-open"));
   }
 
   function showToast(message, type = "info") {
@@ -525,6 +533,7 @@
     closeContextMenu,
     setEmptyState,
     setSidebarOpen,
+    toggleSidebar,
     showToast,
     confirmDanger,
     promptRename,

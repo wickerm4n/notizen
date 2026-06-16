@@ -7,10 +7,10 @@
   <meta name="description" content="Eine moderne, lokale Notizen-App für GitHub Pages.">
   <meta name="theme-color" content="#2f5f9e">
   <title>Notizen</title>
-  <link rel="icon" href="icons/favicon.svg?v=2026.06.16.2" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.16.2">
-  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.16.2">
-  <link rel="stylesheet" href="css/styles.css?v=2026.06.16.2">
+  <link rel="icon" href="icons/favicon.svg?v=2026.06.16.3" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.16.3">
+  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.16.3">
+  <link rel="stylesheet" href="css/styles.css?v=2026.06.16.3">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
@@ -34,11 +34,14 @@
   <div class="app-shell" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Notiznavigation">
       <div class="brand">
-        <img src="icons/app-icon.svg?v=2026.06.16.2" width="42" height="42" alt="">
+        <img src="icons/app-icon.svg?v=2026.06.16.3" width="42" height="42" alt="">
         <div>
           <strong>Notizen</strong>
           <span>Lokal und privat</span>
         </div>
+        <button class="icon-button mobile-only sidebar-close-button" id="closeSidebarButton" type="button" aria-label="Notizliste schließen" data-tooltip="Notizliste schließen">
+          <svg class="icon"><use href="#icon-close"></use></svg>
+        </button>
       </div>
 
       <button class="button button-primary new-note-button" id="newNoteButton" type="button" data-tooltip="Neue Notiz erstellen">
@@ -317,13 +320,13 @@
   </nav>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="js/storage.js?v=2026.06.16.2" defer></script>
-  <script src="js/notes.js?v=2026.06.16.2" defer></script>
-  <script src="js/markdown.js?v=2026.06.16.2" defer></script>
-  <script src="js/settings.js?v=2026.06.16.2" defer></script>
-  <script src="js/editor.js?v=2026.06.16.2" defer></script>
-  <script src="js/ui.js?v=2026.06.16.2" defer></script>
-  <script src="js/app.js?v=2026.06.16.2" defer></script>
-  <script src="js/update.js?v=2026.06.16.2" data-app-version="2026.06.16.2" defer></script>
+  <script src="js/storage.js?v=2026.06.16.3" defer></script>
+  <script src="js/notes.js?v=2026.06.16.3" defer></script>
+  <script src="js/markdown.js?v=2026.06.16.3" defer></script>
+  <script src="js/settings.js?v=2026.06.16.3" defer></script>
+  <script src="js/editor.js?v=2026.06.16.3" defer></script>
+  <script src="js/ui.js?v=2026.06.16.3" defer></script>
+  <script src="js/app.js?v=2026.06.16.3" defer></script>
+  <script src="js/update.js?v=2026.06.16.3" data-app-version="2026.06.16.3" defer></script>
 </body>
 </html>
