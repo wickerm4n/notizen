@@ -3,7 +3,6 @@
 
   const App = global.NotizenApp || (global.NotizenApp = {});
   const elements = {};
-  const FULLSCREEN_TRANSITION_MS = 260;
   const REQUIRED_ELEMENTS = [
     ["workspace", "workspace"],
     ["titleInput", "noteTitleInput"],
@@ -17,7 +16,6 @@
     ["fullscreenButton", "fullscreenButton"]
   ];
   let currentNoteId = "";
-  let fullscreenTimer = 0;
 
   function init(callbacks) {
     callbacks = callbacks || {};
@@ -204,32 +202,25 @@
       return false;
     }
     const nextState = typeof force === "boolean" ? force : !isFullscreen();
-    clearTimeout(fullscreenTimer);
-    fullscreenTimer = 0;
 
     if (nextState) {
       document.body.classList.remove("sidebar-open");
-      document.body.classList.add("fullscreen-transition", "fullscreen-sidebar-hidden");
+      document.body.classList.add("fullscreen-sidebar-hidden");
+      elements.workspace.classList.add("is-fullscreen");
       setFullscreenButtonState(true);
-      fullscreenTimer = window.setTimeout(() => {
-        elements.workspace.classList.add("is-fullscreen");
-        document.body.classList.remove("fullscreen-transition");
-        fullscreenTimer = 0;
-      }, FULLSCREEN_TRANSITION_MS);
       return true;
     }
 
     elements.workspace.classList.remove("is-fullscreen");
-    document.body.classList.add("fullscreen-transition");
+    document.body.classList.remove("fullscreen-sidebar-hidden");
     setFullscreenButtonState(false);
-    requestAnimationFrame(() => {
-      document.body.classList.remove("fullscreen-sidebar-hidden");
-      fullscreenTimer = window.setTimeout(() => {
-        document.body.classList.remove("fullscreen-transition");
-        fullscreenTimer = 0;
-      }, FULLSCREEN_TRANSITION_MS);
-    });
     return false;
+  }
+
+  function exitFullscreen() {
+    if (isFullscreen()) {
+      toggleFullscreen(false);
+    }
   }
 
   function setFullscreenButtonState(nextState) {
@@ -259,6 +250,7 @@
     setViewMode,
     setPinned,
     setControlsEnabled,
+    exitFullscreen,
     getTitle,
     getContent
   };

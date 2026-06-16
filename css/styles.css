@@ -1156,8 +1156,7 @@ body:not(.show-counters) #charCount {
 
 @media (max-width: 980px), (max-height: 560px) and (hover: none) {
   .app-shell {
-    --drawer-width: min(var(--sidebar-width), calc(100vw - 48px));
-    --workspace-shift: clamp(10px, 5vw, 28px);
+    --drawer-width: min(88vw, 336px);
     grid-template-columns: 1fr;
   }
 
@@ -1169,7 +1168,7 @@ body:not(.show-counters) #charCount {
     position: fixed;
     inset: 0 auto 0 0;
     width: var(--drawer-width);
-    max-width: calc(100vw - 24px);
+    max-width: calc(100vw - 16px);
     height: var(--app-height);
     max-height: var(--app-height);
     overflow-y: auto;
@@ -1186,7 +1185,7 @@ body:not(.show-counters) #charCount {
   }
 
   body.sidebar-open .workspace {
-    transform: translateX(var(--workspace-shift));
+    transform: none;
   }
 
   .scrim {
@@ -1213,6 +1212,16 @@ body:not(.show-counters) #charCount {
     align-content: flex-start;
   }
 
+  .statusbar {
+    justify-content: center;
+    text-align: center;
+    gap: 6px 12px;
+  }
+
+  .statusbar span {
+    white-space: nowrap;
+  }
+
   .sidebar .brand {
     align-items: center;
   }
@@ -1220,7 +1229,10 @@ body:not(.show-counters) #charCount {
   .title-input {
     order: 2;
     flex-basis: 100%;
+    color: var(--text);
+    background: #1d2738;
     background: var(--surface-soft);
+    border: 1px solid #354763;
     border-color: var(--border);
   }
 
@@ -1234,7 +1246,8 @@ body:not(.show-counters) #charCount {
   .viewbar {
     align-items: stretch;
     gap: 10px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding-block: 10px;
   }
 
@@ -1266,9 +1279,11 @@ body:not(.show-counters) #charCount {
   .editor-pane,
   .preview-pane {
     min-height: 220px;
+    background: #162033;
     background: color-mix(in srgb, var(--surface) 88%, var(--surface-hover));
+    border-color: #466184;
     border-color: color-mix(in srgb, var(--border) 72%, var(--accent));
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 0 0 1px rgba(95, 143, 232, 0.18), 0 14px 32px rgba(0, 0, 0, 0.22);
   }
 
   textarea,
@@ -1276,8 +1291,69 @@ body:not(.show-counters) #charCount {
     padding: clamp(20px, 5vw, 30px);
   }
 
+  textarea {
+    color: var(--text);
+    background: transparent;
+  }
+
   textarea::placeholder {
+    color: rgba(243, 246, 251, 0.62);
     color: color-mix(in srgb, var(--text) 58%, transparent);
+  }
+
+  .workspace.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    height: var(--app-height);
+    transform: none !important;
+    background: var(--bg);
+  }
+
+  .workspace.is-fullscreen .toolbar,
+  .workspace.is-fullscreen .statusbar {
+    display: none;
+  }
+
+  .workspace.is-fullscreen .viewbar {
+    min-height: 56px;
+    display: flex;
+    justify-content: flex-end;
+    padding-block: max(8px, env(safe-area-inset-top)) 8px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+  }
+
+  .workspace.is-fullscreen .segmented-control {
+    display: none;
+  }
+
+  .workspace.is-fullscreen .viewbar-actions {
+    margin-left: auto;
+  }
+
+  .workspace.is-fullscreen #settingsButton {
+    display: none;
+  }
+
+  .workspace.is-fullscreen .editor-wrap {
+    padding: 12px;
+  }
+
+  .workspace.is-fullscreen .editor-grid {
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .workspace.is-fullscreen[data-view-mode="split"] .editor-grid {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .workspace.is-fullscreen .editor-pane,
+  .workspace.is-fullscreen .preview-pane {
+    height: 100%;
+    min-height: 0;
   }
 
   .settings-grid {
@@ -1301,8 +1377,14 @@ body:not(.show-counters) #charCount {
   }
 
   .statusbar {
-    justify-content: flex-start;
+    justify-content: center;
+    text-align: center;
+    gap: 6px 12px;
     padding-block: 8px max(8px, env(safe-area-inset-bottom));
+  }
+
+  .statusbar span {
+    white-space: nowrap;
   }
 
   .modal-card {

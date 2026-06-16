@@ -409,6 +409,14 @@
 
   function setSidebarOpen(open) {
     const isOpen = Boolean(open);
+    if (isOpen && App.Editor && typeof App.Editor.exitFullscreen === "function") {
+      App.Editor.exitFullscreen();
+      document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition");
+      const workspace = document.getElementById("workspace");
+      if (workspace) {
+        workspace.classList.remove("is-fullscreen");
+      }
+    }
     document.body.classList.toggle("sidebar-open", isOpen);
   }
 
