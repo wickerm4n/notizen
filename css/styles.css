@@ -1134,6 +1134,10 @@ textarea::placeholder {
   display: none;
 }
 
+.icon-button.fullscreen-sidebar-toggle {
+  display: none;
+}
+
 body:not(.show-counters) #wordCount,
 body:not(.show-counters) #charCount {
   display: none;
@@ -1318,7 +1322,7 @@ body:not(.show-counters) #charCount {
   .workspace.is-fullscreen .viewbar {
     min-height: 56px;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     padding-block: max(8px, env(safe-area-inset-top)) 8px;
     border-bottom: 1px solid var(--border);
     background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -1329,7 +1333,13 @@ body:not(.show-counters) #charCount {
   }
 
   .workspace.is-fullscreen .viewbar-actions {
-    margin-left: auto;
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .workspace.is-fullscreen .fullscreen-sidebar-toggle {
+    display: inline-grid;
   }
 
   .workspace.is-fullscreen #settingsButton {

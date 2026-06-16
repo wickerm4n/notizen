@@ -58,6 +58,7 @@
     onElement("newNoteButton", "click", createNewNote);
     onElement("emptyNewNoteButton", "click", createNewNote);
     onElement("openSidebarButton", "click", () => App.UI.toggleSidebar());
+    onElement("fullscreenSidebarButton", "click", () => App.UI.toggleSidebar());
     onElement("closeSidebarButton", "click", () => App.UI.setSidebarOpen(false));
     onElement("sidebarScrim", "click", () => App.UI.setSidebarOpen(false));
 

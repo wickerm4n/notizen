@@ -15,7 +15,10 @@
     ["saveNowButton", "saveNowButton"],
     ["fullscreenButton", "fullscreenButton"]
   ];
+  const FULLSCREEN_TRANSITION_MS = 260;
+  const MOBILE_FULLSCREEN_QUERY = "(max-width: 980px), (max-height: 560px) and (hover: none)";
   let currentNoteId = "";
+  let fullscreenTimer = 0;
 
   function init(callbacks) {
     callbacks = callbacks || {};
@@ -202,19 +205,41 @@
       return false;
     }
     const nextState = typeof force === "boolean" ? force : !isFullscreen();
+    clearPendingFullscreenTimer();
 
     if (nextState) {
       document.body.classList.remove("sidebar-open");
       document.body.classList.add("fullscreen-sidebar-hidden");
-      elements.workspace.classList.add("is-fullscreen");
+      if (shouldApplyFullscreenImmediately()) {
+        elements.workspace.classList.add("is-fullscreen");
+      } else {
+        document.body.classList.add("fullscreen-transition");
+        fullscreenTimer = global.setTimeout(() => {
+          elements.workspace.classList.add("is-fullscreen");
+          document.body.classList.remove("fullscreen-transition");
+          fullscreenTimer = 0;
+        }, FULLSCREEN_TRANSITION_MS);
+      }
       setFullscreenButtonState(true);
       return true;
     }
 
     elements.workspace.classList.remove("is-fullscreen");
-    document.body.classList.remove("fullscreen-sidebar-hidden");
+    document.body.classList.remove("fullscreen-sidebar-hidden", "fullscreen-transition");
     setFullscreenButtonState(false);
     return false;
+  }
+
+  function shouldApplyFullscreenImmediately() {
+    return Boolean(global.matchMedia && global.matchMedia(MOBILE_FULLSCREEN_QUERY).matches);
+  }
+
+  function clearPendingFullscreenTimer() {
+    if (!fullscreenTimer) {
+      return;
+    }
+    global.clearTimeout(fullscreenTimer);
+    fullscreenTimer = 0;
   }
 
   function exitFullscreen() {
