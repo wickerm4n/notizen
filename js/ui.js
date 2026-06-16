@@ -3,39 +3,71 @@
 
   const App = global.NotizenApp || (global.NotizenApp = {});
   const elements = {};
+  const REQUIRED_ELEMENTS = [
+    ["noteList", "noteList"],
+    ["noteCount", "noteCount"],
+    ["selectionBar", "selectionBar"],
+    ["selectionCount", "selectionCount"],
+    ["contextMenu", "noteContextMenu"],
+    ["emptyState", "emptyState"],
+    ["editorGrid", "editorGrid"],
+    ["toastStack", "toastStack"],
+    ["searchInput", "searchInput"],
+    ["sortSelect", "sortSelect"],
+    ["sidebarScrim", "sidebarScrim"],
+    ["settingsDialog", "settingsDialog"],
+    ["settingsForm", "settingsForm"],
+    ["fontSizeOutput", "fontSizeOutput"],
+    ["confirmDialog", "confirmDialog"],
+    ["renameDialog", "renameDialog"],
+    ["renameInput", "renameInput"],
+    ["exportDialog", "exportDialog"],
+    ["exportTitle", "exportTitle"],
+    ["exportFormat", "exportFormat"]
+  ];
   let tooltipTarget = null;
   let contextMenuHandler = null;
 
   function init(callbacks = {}) {
-    elements.noteList = document.getElementById("noteList");
-    elements.noteCount = document.getElementById("noteCount");
-    elements.selectionBar = document.getElementById("selectionBar");
-    elements.selectionCount = document.getElementById("selectionCount");
-    elements.contextMenu = document.getElementById("noteContextMenu");
+    if (!collectElements()) {
+      return false;
+    }
     elements.contextPinLabel = elements.contextMenu.querySelector("[data-pin-label]");
-    elements.emptyState = document.getElementById("emptyState");
-    elements.editorGrid = document.getElementById("editorGrid");
-    elements.toastStack = document.getElementById("toastStack");
-    elements.searchInput = document.getElementById("searchInput");
-    elements.sortSelect = document.getElementById("sortSelect");
-    elements.sidebarScrim = document.getElementById("sidebarScrim");
-    elements.settingsDialog = document.getElementById("settingsDialog");
-    elements.settingsForm = document.getElementById("settingsForm");
-    elements.fontSizeOutput = document.getElementById("fontSizeOutput");
-    elements.confirmDialog = document.getElementById("confirmDialog");
-    elements.renameDialog = document.getElementById("renameDialog");
-    elements.renameInput = document.getElementById("renameInput");
-    elements.exportDialog = document.getElementById("exportDialog");
-    elements.exportTitle = document.getElementById("exportTitle");
-    elements.exportFormat = document.getElementById("exportFormat");
+    if (!elements.contextPinLabel) {
+      console.error("Notizen-App: Kontextmenue-Pin-Label fehlt.");
+      return false;
+    }
 
-    elements.settingsForm.elements.fontSize.addEventListener("input", () => {
-      updateFontSizeOutput(elements.settingsForm.elements.fontSize.value);
-    });
+    if (elements.settingsForm.elements.fontSize) {
+      elements.settingsForm.elements.fontSize.addEventListener("input", () => {
+        updateFontSizeOutput(elements.settingsForm.elements.fontSize.value);
+      });
+    }
     contextMenuHandler = callbacks.onContextAction || null;
     initTooltips();
     initContextMenu();
     initAnimatedDialogs();
+    return true;
+  }
+
+  function collectElements() {
+    const missing = [];
+    REQUIRED_ELEMENTS.forEach(([key, id]) => {
+      elements[key] = document.getElementById(id);
+      if (!elements[key]) {
+        missing.push(id);
+      }
+    });
+
+    if (missing.length) {
+      console.error(`Notizen-App: UI-Elemente fehlen: ${missing.join(", ")}`);
+      return false;
+    }
+    return true;
+  }
+
+  function closestTarget(target, selector) {
+    return target && typeof target.closest === "function" ? target.closest(selector) : null;
   }
 
   function initAnimatedDialogs() {
@@ -60,7 +92,7 @@
 
   function initContextMenu() {
     elements.contextMenu.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-context-action]");
+      const button = closestTarget(event.target, "[data-context-action]");
       if (!button) {
         return;
       }
@@ -95,7 +127,7 @@
     document.body.append(elements.tooltip);
 
     document.addEventListener("pointerover", (event) => {
-      const target = event.target.closest("[data-tooltip]");
+      const target = closestTarget(event.target, "[data-tooltip]");
       if (target && target !== tooltipTarget) {
         showTooltip(target);
       }
@@ -108,14 +140,14 @@
     });
 
     document.addEventListener("focusin", (event) => {
-      const target = event.target.closest("[data-tooltip]");
+      const target = closestTarget(event.target, "[data-tooltip]");
       if (target) {
         showTooltip(target);
       }
     });
 
     document.addEventListener("focusout", (event) => {
-      if (event.target === tooltipTarget || event.target.closest("[data-tooltip]") === tooltipTarget) {
+      if (event.target === tooltipTarget || closestTarget(event.target, "[data-tooltip]") === tooltipTarget) {
         hideTooltip();
       }
     });
@@ -197,10 +229,16 @@
   }
 
   function updateFontSizeOutput(value) {
+    if (!elements.fontSizeOutput) {
+      return;
+    }
     elements.fontSizeOutput.textContent = `${value} px`;
   }
 
   function openDialog(dialog) {
+    if (!dialog) {
+      return;
+    }
     dialog.classList.remove("is-open", "is-closing");
     dialog.dataset.closing = "";
     dialog.returnValue = "";
@@ -213,6 +251,9 @@
   }
 
   function closeDialog(dialog, returnValue = "cancel") {
+    if (!dialog) {
+      return;
+    }
     if (dialog.dataset.closing === "true" || (!dialog.open && !dialog.hasAttribute("open"))) {
       return;
     }
@@ -245,6 +286,9 @@
   }
 
   function renderNoteList(notes, selectedId, totalCount, selectedIds = new Set()) {
+    if (!elements.noteList || !elements.noteCount) {
+      return;
+    }
     elements.noteList.replaceChildren();
     elements.noteCount.textContent = countLabel(notes.length, totalCount);
 
@@ -315,12 +359,15 @@
   }
 
   function updateSelectionBar(selectedCount) {
+    if (!elements.selectionBar || !elements.selectionCount) {
+      return;
+    }
     elements.selectionBar.hidden = selectedCount === 0;
     elements.selectionCount.textContent = `${selectedCount} ${selectedCount === 1 ? "Notiz" : "Notizen"} ausgewählt`;
   }
 
   function openNoteContextMenu(note, x, y) {
-    if (!note) {
+    if (!note || !elements.contextMenu || !elements.contextPinLabel) {
       return;
     }
     hideTooltip();
@@ -349,8 +396,12 @@
   }
 
   function setEmptyState(isEmpty) {
-    elements.emptyState.hidden = !isEmpty;
-    elements.editorGrid.hidden = isEmpty;
+    if (elements.emptyState) {
+      elements.emptyState.hidden = !isEmpty;
+    }
+    if (elements.editorGrid) {
+      elements.editorGrid.hidden = isEmpty;
+    }
   }
 
   function setSidebarOpen(open) {
@@ -358,6 +409,10 @@
   }
 
   function showToast(message, type = "info") {
+    if (!elements.toastStack) {
+      console[type === "error" ? "error" : "log"](message);
+      return;
+    }
     const toast = document.createElement("div");
     toast.className = `toast ${type === "error" ? "error" : ""}`.trim();
     toast.textContent = message;
@@ -371,9 +426,15 @@
 
   function confirmDanger({ title, message, confirmText = "Löschen" }) {
     const dialog = elements.confirmDialog;
-    document.getElementById("confirmTitle").textContent = title;
-    document.getElementById("confirmMessage").textContent = message;
-    document.getElementById("confirmAcceptButton").textContent = confirmText;
+    const titleElement = document.getElementById("confirmTitle");
+    const messageElement = document.getElementById("confirmMessage");
+    const acceptButton = document.getElementById("confirmAcceptButton");
+    if (!dialog || !titleElement || !messageElement || !acceptButton) {
+      return Promise.resolve(false);
+    }
+    titleElement.textContent = title;
+    messageElement.textContent = message;
+    acceptButton.textContent = confirmText;
 
     return new Promise((resolve) => {
       const onClose = () => resolve(dialog.returnValue === "confirm");
@@ -384,6 +445,9 @@
 
   function promptRename(currentTitle) {
     const dialog = elements.renameDialog;
+    if (!dialog || !elements.renameInput) {
+      return Promise.resolve("");
+    }
     elements.renameInput.value = currentTitle || "";
 
     return new Promise((resolve) => {
@@ -405,6 +469,9 @@
 
   function chooseExportFormat(scopeLabel) {
     const dialog = elements.exportDialog;
+    if (!dialog || !elements.exportTitle || !elements.exportFormat) {
+      return Promise.resolve("");
+    }
     elements.exportTitle.textContent = `${scopeLabel} exportieren`;
     elements.exportFormat.value = "json";
 
@@ -419,6 +486,9 @@
 
   function openSettings(settings) {
     const dialog = elements.settingsDialog;
+    if (!dialog || !elements.settingsForm || !elements.settingsForm.elements.fontSize) {
+      return Promise.resolve(null);
+    }
     App.Settings.populateForm(elements.settingsForm, settings);
     updateFontSizeOutput(elements.settingsForm.elements.fontSize.value);
 
@@ -436,11 +506,15 @@
   }
 
   function setSearchValue(value) {
-    elements.searchInput.value = value || "";
+    if (elements.searchInput) {
+      elements.searchInput.value = value || "";
+    }
   }
 
   function setSortValue(value) {
-    elements.sortSelect.value = App.Settings.sanitizeSortBy(value);
+    if (elements.sortSelect) {
+      elements.sortSelect.value = App.Settings.sanitizeSortBy(value);
+    }
   }
 
   App.UI = {

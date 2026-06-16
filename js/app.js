@@ -11,13 +11,17 @@
   let saveTimer = 0;
   const dirtyIds = new Set();
   const selectedIds = new Set();
+  const MAX_STORED_ID_LENGTH = 160;
+  const MAX_STORED_CONTENT_LENGTH = 500000;
 
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
-    App.UI.init({
+    if (App.UI.init({
       onContextAction: handleContextAction
-    });
+    }) === false) {
+      return;
+    }
     storage = await App.Storage.createStorage();
 
     try {
@@ -31,12 +35,15 @@
     App.Settings.watchSystemTheme(() => App.Settings.applySettings(settings));
     App.UI.setSortValue(settings.sortBy);
 
-    App.Editor.init({
+    if (App.Editor.init({
       onTitleInput: handleTitleInput,
       onContentInput: handleContentInput,
       onSaveNow: () => saveCurrentNote(false),
       onFullscreenChange: () => {}
-    });
+    }) === false) {
+      App.UI.showToast("Der Editor konnte nicht initialisiert werden.", "error");
+      return;
+    }
     App.Editor.setViewMode(settings.viewMode);
 
     bindEvents();
@@ -48,37 +55,37 @@
   }
 
   function bindEvents() {
-    document.getElementById("newNoteButton").addEventListener("click", createNewNote);
-    document.getElementById("emptyNewNoteButton").addEventListener("click", createNewNote);
-    document.getElementById("openSidebarButton").addEventListener("click", () => App.UI.setSidebarOpen(true));
-    document.getElementById("sidebarScrim").addEventListener("click", () => App.UI.setSidebarOpen(false));
+    onElement("newNoteButton", "click", createNewNote);
+    onElement("emptyNewNoteButton", "click", createNewNote);
+    onElement("openSidebarButton", "click", () => App.UI.setSidebarOpen(true));
+    onElement("sidebarScrim", "click", () => App.UI.setSidebarOpen(false));
 
-    document.getElementById("noteList").addEventListener("click", async (event) => {
-      const openTarget = event.target.closest("[data-note-open]");
+    onElement("noteList", "click", async (event) => {
+      const openTarget = closestTarget(event.target, "[data-note-open]");
       if (!openTarget) {
         return;
       }
-      const card = event.target.closest("[data-note-id]");
+      const card = closestTarget(event.target, "[data-note-id]");
       if (!card) {
         return;
       }
       await selectNote(card.dataset.noteId);
     });
 
-    document.getElementById("noteList").addEventListener("change", (event) => {
-      const checkbox = event.target.closest("[data-note-checkbox]");
+    onElement("noteList", "change", (event) => {
+      const checkbox = closestTarget(event.target, "[data-note-checkbox]");
       if (!checkbox) {
         return;
       }
-      const card = checkbox.closest("[data-note-id]");
+      const card = closestTarget(checkbox, "[data-note-id]");
       if (!card) {
         return;
       }
       toggleNoteSelection(card.dataset.noteId, checkbox.checked);
     });
 
-    document.getElementById("noteList").addEventListener("contextmenu", (event) => {
-      const card = event.target.closest("[data-note-id]");
+    onElement("noteList", "contextmenu", (event) => {
+      const card = closestTarget(event.target, "[data-note-id]");
       if (!card) {
         return;
       }
@@ -87,12 +94,12 @@
       App.UI.openNoteContextMenu(note, event.clientX, event.clientY);
     });
 
-    document.getElementById("searchInput").addEventListener("input", (event) => {
+    onElement("searchInput", "input", (event) => {
       searchQuery = event.target.value;
       refreshList();
     });
 
-    document.getElementById("sortSelect").addEventListener("change", async (event) => {
+    onElement("sortSelect", "change", async (event) => {
       settings.sortBy = App.Settings.sanitizeSortBy(event.target.value);
       await saveSettings();
       refreshList();
@@ -106,19 +113,24 @@
       });
     });
 
-    document.getElementById("renameNoteButton").addEventListener("click", renameCurrentNote);
-    document.getElementById("pinNoteButton").addEventListener("click", toggleCurrentPin);
-    document.getElementById("duplicateNoteButton").addEventListener("click", duplicateCurrentNote);
-    document.getElementById("deleteNoteButton").addEventListener("click", deleteCurrentNote);
-    document.getElementById("exportNoteButton").addEventListener("click", exportCurrentNote);
-    document.getElementById("exportAllButton").addEventListener("click", exportAllNotes);
-    document.getElementById("bulkExportButton").addEventListener("click", exportSelectedNotes);
-    document.getElementById("bulkDuplicateButton").addEventListener("click", duplicateSelectedNotes);
-    document.getElementById("bulkDeleteButton").addEventListener("click", deleteSelectedNotes);
-    document.getElementById("clearSelectionButton").addEventListener("click", clearNoteSelection);
-    document.getElementById("settingsButton").addEventListener("click", openSettings);
-    document.getElementById("importButton").addEventListener("click", () => document.getElementById("importInput").click());
-    document.getElementById("importInput").addEventListener("change", handleImport);
+    onElement("renameNoteButton", "click", renameCurrentNote);
+    onElement("pinNoteButton", "click", toggleCurrentPin);
+    onElement("duplicateNoteButton", "click", duplicateCurrentNote);
+    onElement("deleteNoteButton", "click", deleteCurrentNote);
+    onElement("exportNoteButton", "click", exportCurrentNote);
+    onElement("exportAllButton", "click", exportAllNotes);
+    onElement("bulkExportButton", "click", exportSelectedNotes);
+    onElement("bulkDuplicateButton", "click", duplicateSelectedNotes);
+    onElement("bulkDeleteButton", "click", deleteSelectedNotes);
+    onElement("clearSelectionButton", "click", clearNoteSelection);
+    onElement("settingsButton", "click", openSettings);
+    onElement("importButton", "click", () => {
+      const input = byId("importInput");
+      if (input) {
+        input.click();
+      }
+    });
+    onElement("importInput", "change", handleImport);
 
     const persistBeforeLeaving = () => {
       if (settings.autoSave && selectedId) {
@@ -134,6 +146,27 @@
     });
   }
 
+  function byId(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+      console.warn(`Notizen-App: Element #${id} wurde nicht gefunden.`);
+    }
+    return element;
+  }
+
+  function onElement(id, eventName, handler) {
+    const element = byId(id);
+    if (!element || typeof handler !== "function") {
+      return false;
+    }
+    element.addEventListener(eventName, handler);
+    return true;
+  }
+
+  function closestTarget(target, selector) {
+    return target && typeof target.closest === "function" ? target.closest(selector) : null;
+  }
+
   async function loadNotes() {
     try {
       const loaded = await storage.getAllNotes();
@@ -145,7 +178,7 @@
   }
 
   function normalizeStoredNote(note) {
-    if (!note || typeof note !== "object" || typeof note.id !== "string") {
+    if (!note || typeof note !== "object" || typeof note.id !== "string" || note.id.length > MAX_STORED_ID_LENGTH) {
       return null;
     }
 
@@ -166,17 +199,19 @@
   }
 
   function normalizeStoredContent(content) {
+    let normalized;
     if (typeof content === "string") {
-      return content;
+      normalized = content;
+    } else if (content == null) {
+      normalized = "";
+    } else {
+      try {
+        normalized = JSON.stringify(content, null, 2);
+      } catch (error) {
+        normalized = String(content);
+      }
     }
-    if (content == null) {
-      return "";
-    }
-    try {
-      return JSON.stringify(content, null, 2);
-    } catch (error) {
-      return String(content);
-    }
+    return normalized.slice(0, MAX_STORED_CONTENT_LENGTH);
   }
 
   function chooseInitialNote() {
@@ -340,7 +375,7 @@
   async function saveNoteById(id, silent) {
     const note = notes.find((item) => item.id === id);
     if (!note) {
-      return;
+      return true;
     }
 
     const stamp = note.updatedAt;
@@ -359,19 +394,23 @@
         App.Editor.setUpdatedAt(latest || note);
       }
       refreshList();
+      return true;
     } catch (error) {
       if (selectedId === id) {
         App.Editor.setSaveStatus("error");
       }
       App.UI.showToast("Die Notiz konnte nicht gespeichert werden.", "error");
+      return false;
     }
   }
 
   async function saveSettings() {
     try {
       await storage.saveSettings(settings);
+      return true;
     } catch (error) {
       App.UI.showToast("Einstellungen konnten nicht gespeichert werden.", "error");
+      return false;
     }
   }
 
@@ -587,4 +626,18 @@
     refreshList();
     App.UI.showToast("Einstellungen gespeichert.");
   }
+
+  App.prepareForSilentUpdate = async function prepareForSilentUpdate() {
+    clearTimeout(saveTimer);
+    if (selectedId) {
+      const noteSaved = await saveNoteById(selectedId, true);
+      if (!noteSaved) {
+        throw new Error("Die aktuelle Notiz konnte vor dem Update nicht gespeichert werden.");
+      }
+    }
+    const settingsSaved = await saveSettings();
+    if (!settingsSaved) {
+      throw new Error("Die Einstellungen konnten vor dem Update nicht gespeichert werden.");
+    }
+  };
 })(window);

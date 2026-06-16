@@ -79,25 +79,48 @@
     }
   }
 
+  function getFormControls(form) {
+    if (!form || !form.elements) {
+      return null;
+    }
+    const controls = {
+      fontFamily: form.elements.fontFamily,
+      fontSize: form.elements.fontSize,
+      theme: form.elements.theme,
+      viewMode: form.elements.viewMode,
+      autoSave: form.elements.autoSave,
+      showCounters: form.elements.showCounters
+    };
+    return Object.values(controls).every(Boolean) ? controls : null;
+  }
+
   function populateForm(form, settings) {
+    const controls = getFormControls(form);
+    if (!controls) {
+      return;
+    }
     const clean = mergeSettings(settings);
-    form.elements.fontFamily.value = clean.fontFamily;
-    form.elements.fontSize.value = String(clean.fontSize);
-    form.elements.theme.value = clean.theme;
-    form.elements.viewMode.value = clean.viewMode;
-    form.elements.autoSave.checked = clean.autoSave;
-    form.elements.showCounters.checked = clean.showCounters;
+    controls.fontFamily.value = clean.fontFamily;
+    controls.fontSize.value = String(clean.fontSize);
+    controls.theme.value = clean.theme;
+    controls.viewMode.value = clean.viewMode;
+    controls.autoSave.checked = clean.autoSave;
+    controls.showCounters.checked = clean.showCounters;
   }
 
   function readForm(form, currentSettings) {
+    const controls = getFormControls(form);
+    if (!controls) {
+      return mergeSettings(currentSettings);
+    }
     return mergeSettings({
       ...currentSettings,
-      fontFamily: form.elements.fontFamily.value,
-      fontSize: form.elements.fontSize.value,
-      theme: form.elements.theme.value,
-      viewMode: form.elements.viewMode.value,
-      autoSave: form.elements.autoSave.checked,
-      showCounters: form.elements.showCounters.checked
+      fontFamily: controls.fontFamily.value,
+      fontSize: controls.fontSize.value,
+      theme: controls.theme.value,
+      viewMode: controls.viewMode.value,
+      autoSave: controls.autoSave.checked,
+      showCounters: controls.showCounters.checked
     });
   }
 

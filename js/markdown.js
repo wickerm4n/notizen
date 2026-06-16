@@ -43,6 +43,7 @@
       const safeUrl = escapeHtml(sanitizeUrl(url));
       return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${label}</a>`;
     });
+    html = html.replace(/\n/g, "<br>\n");
 
     return html;
   }
@@ -59,7 +60,7 @@
       if (!paragraph.length) {
         return;
       }
-      html.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+      html.push(`<p>${renderInline(paragraph.join("\n"))}</p>`);
       paragraph = [];
     }
 

@@ -4,46 +4,80 @@
   const App = global.NotizenApp || (global.NotizenApp = {});
   const elements = {};
   const FULLSCREEN_TRANSITION_MS = 260;
+  const REQUIRED_ELEMENTS = [
+    ["workspace", "workspace"],
+    ["titleInput", "noteTitleInput"],
+    ["textarea", "noteEditor"],
+    ["preview", "markdownPreview"],
+    ["saveStatus", "saveStatus"],
+    ["updatedAtStatus", "updatedAtStatus"],
+    ["wordCount", "wordCount"],
+    ["charCount", "charCount"],
+    ["saveNowButton", "saveNowButton"],
+    ["fullscreenButton", "fullscreenButton"]
+  ];
   let currentNoteId = "";
   let fullscreenTimer = 0;
 
   function init(callbacks) {
-    elements.workspace = document.getElementById("workspace");
-    elements.titleInput = document.getElementById("noteTitleInput");
-    elements.textarea = document.getElementById("noteEditor");
-    elements.preview = document.getElementById("markdownPreview");
-    elements.saveStatus = document.getElementById("saveStatus");
-    elements.updatedAtStatus = document.getElementById("updatedAtStatus");
-    elements.wordCount = document.getElementById("wordCount");
-    elements.charCount = document.getElementById("charCount");
-    elements.saveNowButton = document.getElementById("saveNowButton");
-    elements.fullscreenButton = document.getElementById("fullscreenButton");
+    callbacks = callbacks || {};
+    if (!collectElements()) {
+      return false;
+    }
 
-    elements.titleInput.addEventListener("input", () => callbacks.onTitleInput(elements.titleInput.value));
+    const handlers = {
+      onTitleInput: typeof callbacks.onTitleInput === "function" ? callbacks.onTitleInput : () => {},
+      onContentInput: typeof callbacks.onContentInput === "function" ? callbacks.onContentInput : () => {},
+      onSaveNow: typeof callbacks.onSaveNow === "function" ? callbacks.onSaveNow : () => {},
+      onFullscreenChange: typeof callbacks.onFullscreenChange === "function" ? callbacks.onFullscreenChange : () => {}
+    };
+
+    elements.titleInput.addEventListener("input", () => handlers.onTitleInput(elements.titleInput.value));
     elements.textarea.addEventListener("input", () => {
       updateCounters();
       syncPreview();
-      callbacks.onContentInput(elements.textarea.value);
+      handlers.onContentInput(elements.textarea.value);
     });
-    elements.saveNowButton.addEventListener("click", callbacks.onSaveNow);
+    elements.saveNowButton.addEventListener("click", handlers.onSaveNow);
     elements.fullscreenButton.addEventListener("click", () => {
       const active = toggleFullscreen();
-      callbacks.onFullscreenChange(active);
+      handlers.onFullscreenChange(active);
     });
 
     document.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        callbacks.onSaveNow();
+        handlers.onSaveNow();
       }
       if (event.key === "Escape" && isFullscreen()) {
         toggleFullscreen(false);
-        callbacks.onFullscreenChange(false);
+        handlers.onFullscreenChange(false);
       }
     });
+
+    return true;
+  }
+
+  function collectElements() {
+    const missing = [];
+    REQUIRED_ELEMENTS.forEach(([key, id]) => {
+      elements[key] = document.getElementById(id);
+      if (!elements[key]) {
+        missing.push(id);
+      }
+    });
+
+    if (missing.length) {
+      console.error(`Notizen-App: Editor-Elemente fehlen: ${missing.join(", ")}`);
+      return false;
+    }
+    return true;
   }
 
   function loadNote(note) {
+    if (!elements.titleInput || !elements.textarea) {
+      return;
+    }
     currentNoteId = note ? note.id : "";
     elements.titleInput.value = note ? note.title : "";
     elements.textarea.value = note ? note.content : "";
@@ -56,14 +90,32 @@
   }
 
   function focusEditor() {
-    elements.textarea.focus();
+    if (elements.textarea) {
+      elements.textarea.focus();
+    }
   }
 
   function syncPreview() {
-    elements.preview.innerHTML = App.Markdown.renderMarkdown(elements.textarea.value);
+    if (!elements.preview || !elements.textarea) {
+      return;
+    }
+    elements.preview.innerHTML = renderSafePreviewHtml(elements.textarea.value);
+  }
+
+  function renderSafePreviewHtml(content) {
+    if (App.Markdown && typeof App.Markdown.renderMarkdown === "function") {
+      return App.Markdown.renderMarkdown(content);
+    }
+    const escape = App.Markdown && typeof App.Markdown.escapeHtml === "function"
+      ? App.Markdown.escapeHtml
+      : (value) => String(value ?? "");
+    return `<p>${escape(content).replace(/\n/g, "<br>\n")}</p>`;
   }
 
   function updateCounters() {
+    if (!elements.textarea || !elements.wordCount || !elements.charCount) {
+      return { words: 0, chars: 0 };
+    }
     const content = elements.textarea.value || "";
     const words = App.Notes.wordCount(content);
     const chars = content.length;
@@ -73,6 +125,9 @@
   }
 
   function setSaveStatus(status) {
+    if (!elements.saveStatus) {
+      return;
+    }
     const labels = {
       saved: "Gespeichert",
       saving: "Speichert…",
@@ -84,6 +139,9 @@
   }
 
   function setUpdatedAt(note) {
+    if (!elements.updatedAtStatus) {
+      return;
+    }
     if (!note) {
       elements.updatedAtStatus.textContent = "Noch nicht bearbeitet";
       return;
@@ -92,6 +150,9 @@
   }
 
   function setViewMode(mode) {
+    if (!elements.workspace) {
+      return;
+    }
     const cleanMode = App.Settings.sanitizeViewMode(mode);
     elements.workspace.dataset.viewMode = cleanMode;
     document.querySelectorAll("[data-view-mode]").forEach((button) => {
@@ -106,6 +167,9 @@
 
   function setPinned(isPinned) {
     const button = document.getElementById("pinNoteButton");
+    if (!button) {
+      return;
+    }
     button.classList.toggle("is-active", Boolean(isPinned));
     button.setAttribute("aria-pressed", String(Boolean(isPinned)));
     const label = isPinned ? "Pin entfernen" : "Notiz anpinnen";
@@ -131,11 +195,14 @@
   }
 
   function isFullscreen() {
-    return elements.workspace.classList.contains("is-fullscreen")
+    return Boolean(elements.workspace && elements.workspace.classList.contains("is-fullscreen"))
       || document.body.classList.contains("fullscreen-sidebar-hidden");
   }
 
   function toggleFullscreen(force) {
+    if (!elements.workspace || !elements.fullscreenButton) {
+      return false;
+    }
     const nextState = typeof force === "boolean" ? force : !isFullscreen();
     clearTimeout(fullscreenTimer);
     fullscreenTimer = 0;
@@ -174,11 +241,11 @@
   }
 
   function getTitle() {
-    return elements.titleInput.value;
+    return elements.titleInput ? elements.titleInput.value : "";
   }
 
   function getContent() {
-    return elements.textarea.value;
+    return elements.textarea ? elements.textarea.value : "";
   }
 
   App.Editor = {

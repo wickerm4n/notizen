@@ -1,6 +1,6 @@
 # Notizen
 
-Eine kleine Notizen-App für den Browser.
+Eine kleine Notizen-App für den Browser. Die Anwendung läuft komplett lokal und benötigt kein Backend.
 
 ## Überblick
 

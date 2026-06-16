@@ -17,8 +17,21 @@
   --shadow-soft: 0 8px 22px rgba(20, 31, 55, 0.08);
   --radius: 8px;
   --sidebar-width: 336px;
+  --app-height: 100vh;
   --editor-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --editor-font-size: 18px;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-height: 100dvh;
+  }
 }
 
 body[data-theme="dark"] {
@@ -50,6 +63,8 @@ body[data-theme="dark"] {
 
 html,
 body {
+  width: 100%;
+  min-width: 0;
   height: 100%;
   overflow: hidden;
 }
@@ -111,7 +126,9 @@ select:disabled {
 }
 
 .app-shell {
-  height: 100dvh;
+  width: 100%;
+  min-width: 0;
+  height: var(--app-height);
   min-height: 0;
   overflow: hidden;
   display: grid;
@@ -119,7 +136,7 @@ select:disabled {
 }
 
 .sidebar {
-  height: 100dvh;
+  height: var(--app-height);
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -509,17 +526,19 @@ textarea:focus-visible {
 
 .workspace {
   min-width: 0;
-  height: 100dvh;
+  height: var(--app-height);
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  overscroll-behavior: contain;
 }
 
 .toolbar,
 .viewbar,
 .statusbar {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -557,6 +576,7 @@ textarea:focus-visible {
 
 .toolbar-actions,
 .viewbar-actions {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -564,11 +584,13 @@ textarea:focus-visible {
 
 .viewbar {
   flex: 0 0 auto;
+  min-width: 0;
   justify-content: space-between;
   min-height: 62px;
 }
 
 .segmented-control {
+  min-width: 0;
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -595,9 +617,10 @@ textarea:focus-visible {
 .editor-wrap {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   padding: 0 clamp(16px, 3vw, 34px) 18px;
   display: flex;
+  overscroll-behavior: contain;
 }
 
 .editor-grid {
@@ -617,6 +640,8 @@ textarea:focus-visible {
   min-width: 0;
   height: 100%;
   min-height: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -642,6 +667,8 @@ textarea {
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size);
   line-height: 1.75;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 textarea::placeholder {
@@ -654,6 +681,7 @@ textarea::placeholder {
   color: var(--text);
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size);
+  line-height: 1.75;
 }
 
 .workspace[data-view-mode="editor"] .preview-pane,
@@ -699,6 +727,7 @@ textarea::placeholder {
   color: var(--muted);
   font-size: 0.84rem;
   border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .statusbar span {
@@ -728,6 +757,11 @@ textarea::placeholder {
 
 .markdown-body > :last-child {
   margin-bottom: 0;
+}
+
+.markdown-body {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown-body h1,
@@ -1096,7 +1130,7 @@ body:not(.show-counters) #charCount {
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 980px), (max-height: 560px) and (hover: none) {
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -1109,6 +1143,12 @@ body:not(.show-counters) #charCount {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(var(--sidebar-width), calc(100vw - 48px));
+    max-width: calc(100vw - 24px);
+    height: var(--app-height);
+    max-height: var(--app-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     transform: translateX(-105%);
     transition: transform 180ms ease, opacity 260ms ease, filter 260ms ease;
     box-shadow: var(--shadow);
@@ -1134,6 +1174,7 @@ body:not(.show-counters) #charCount {
     min-height: auto;
     padding-block: 12px;
     flex-wrap: wrap;
+    align-content: flex-start;
   }
 
   .title-input {
@@ -1143,6 +1184,9 @@ body:not(.show-counters) #charCount {
 
   .toolbar-actions {
     margin-left: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
   }
 
   .viewbar {
@@ -1154,6 +1198,8 @@ body:not(.show-counters) #charCount {
 
   .segmented-control {
     flex: 1;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .segment {
@@ -1164,18 +1210,20 @@ body:not(.show-counters) #charCount {
 
   .workspace[data-view-mode="split"] .editor-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 1fr) minmax(180px, 1fr);
+    height: auto;
+    min-height: 100%;
   }
 
   .workspace[data-view-mode="split"] .editor-pane,
   .workspace[data-view-mode="split"] .preview-pane {
     height: auto;
-    min-height: 0;
+    min-height: 180px;
   }
 
   .editor-pane,
   .preview-pane {
-    min-height: 0;
+    min-height: 220px;
   }
 
   .settings-grid {
@@ -1200,11 +1248,59 @@ body:not(.show-counters) #charCount {
 
   .statusbar {
     justify-content: flex-start;
-    padding-block: 8px;
+    padding-block: 8px max(8px, env(safe-area-inset-bottom));
   }
 
   .modal-card {
     padding: 18px;
+  }
+}
+
+@media (max-height: 560px) {
+  .sidebar {
+    gap: 12px;
+    padding-block: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-bottom));
+  }
+
+  .brand img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .toolbar {
+    min-height: 0;
+    padding-block: 10px;
+  }
+
+  .title-input {
+    height: 40px;
+  }
+
+  .viewbar {
+    min-height: 0;
+    padding-block: 8px;
+  }
+
+  .editor-wrap {
+    padding-bottom: 12px;
+  }
+
+  .empty-state {
+    margin-block: 0;
+    padding: 22px;
+  }
+
+  .empty-state h1 {
+    font-size: 1.28rem;
+  }
+
+  .empty-state p {
+    margin-bottom: 14px;
+  }
+
+  .statusbar {
+    min-height: 38px;
+    padding-block: 6px max(6px, env(safe-area-inset-bottom));
   }
 }
 
