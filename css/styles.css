@@ -953,6 +953,7 @@ textarea::placeholder {
 
 .modal {
   width: min(620px, calc(100vw - 28px));
+  max-height: calc(var(--app-height) - 28px);
   padding: 0;
   color: var(--text);
   background: transparent;
@@ -989,6 +990,11 @@ textarea::placeholder {
 }
 
 .modal-card {
+  max-height: calc(var(--app-height) - 28px);
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: grid;
   gap: 18px;
   padding: 22px;
@@ -1064,11 +1070,20 @@ textarea::placeholder {
   width: min(860px, calc(100vw - 28px));
 }
 
+.reminder-dialog .modal-card {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
 .reminder-dialog-grid {
   min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
   gap: 18px;
+  padding-right: 2px;
 }
 
 .reminder-list-panel,
@@ -1569,6 +1584,34 @@ body:not(.show-counters) #charCount {
     display: inline-grid;
   }
 
+  .modal {
+    width: min(620px, calc(100vw - 20px));
+    max-height: calc(var(--app-height) - 20px);
+  }
+
+  .modal-card {
+    max-height: calc(var(--app-height) - 20px);
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    background: var(--surface);
+  }
+
+  .reminder-dialog {
+    width: calc(100vw - 20px);
+  }
+
+  .reminder-dialog-grid {
+    gap: 14px;
+  }
+
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1825,7 +1868,7 @@ body:not(.show-counters) #charCount {
   }
 
   .reminder-list {
-    max-height: 32vh;
+    max-height: min(180px, 28vh);
   }
 }
 
@@ -1856,7 +1899,25 @@ body:not(.show-counters) #charCount {
   }
 
   .modal-card {
-    padding: 18px;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .modal {
+    width: calc(100vw - 12px);
+    max-height: calc(var(--app-height) - 12px);
+  }
+
+  .modal-card {
+    max-height: calc(var(--app-height) - 12px);
+  }
+
+  .modal-header {
+    align-items: flex-start;
+  }
+
+  .modal-actions .button {
+    flex: 1 1 128px;
   }
 
   .reminder-strip {
@@ -1930,6 +1991,103 @@ body:not(.show-counters) #charCount {
   .statusbar {
     min-height: 38px;
     padding-block: 6px max(6px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-height: 560px) and (orientation: landscape) and (hover: none) {
+  .modal {
+    width: calc(100vw - 16px);
+    max-height: calc(var(--app-height) - 16px);
+  }
+
+  .modal-card {
+    max-height: calc(var(--app-height) - 16px);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .modal-header h2 {
+    font-size: 1.05rem;
+  }
+
+  .modal-subtitle {
+    max-width: min(420px, 54vw);
+    font-size: 0.9rem;
+  }
+
+  .modal-actions {
+    gap: 8px;
+    padding-top: 6px;
+  }
+
+  .modal-actions .button {
+    min-height: 36px;
+  }
+
+  .settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .reminder-dialog {
+    width: calc(100vw - 16px);
+  }
+
+  .reminder-dialog-grid {
+    grid-template-columns: minmax(0, 0.95fr) minmax(250px, 1fr);
+    gap: 12px;
+  }
+
+  .reminder-list {
+    max-height: none;
+  }
+
+  .reminder-empty,
+  .reminder-row {
+    padding: 9px;
+  }
+
+  .reminder-form-panel {
+    gap: 9px;
+  }
+
+  .reminder-quick-actions,
+  .reminder-selection-actions {
+    gap: 6px;
+  }
+
+  .reminder-quick-actions .button,
+  .reminder-selection-actions .button {
+    min-height: 34px;
+    padding-inline: 10px;
+  }
+
+  .reminder-time-grid {
+    gap: 8px;
+  }
+
+  .check-row {
+    padding: 8px 10px;
+  }
+
+  .reminder-selection-box {
+    gap: 6px;
+    padding: 9px;
+  }
+
+  textarea.reminder-preview-input {
+    min-height: 58px;
+  }
+
+  textarea.reminder-selection-source {
+    min-height: 76px;
+    max-height: 96px;
+  }
+
+  .reminder-selection-preview {
+    min-height: 32px;
+    max-height: 48px;
+    padding: 6px 8px;
   }
 }
 
