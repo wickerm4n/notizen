@@ -15,7 +15,11 @@
   const MAX_STORED_CONTENT_LENGTH = 500000;
   const MAX_IMPORT_FILES = 30;
   const MAX_IMPORT_TOTAL_BYTES = 20 * 1024 * 1024;
+  const MAX_TIMER_DELAY_MS = 24 * 60 * 60 * 1000;
   let dragImportDepth = 0;
+  let reminderDialogNoteId = "";
+  let reminderDraftAnchor = null;
+  const reminderTimers = new Map();
 
   document.addEventListener("DOMContentLoaded", init);
 
@@ -53,7 +57,8 @@
     await loadNotes();
     chooseInitialNote();
     refreshList();
-    selectNote(selectedId, { keepSidebar: true });
+    await selectNote(selectedId, { keepSidebar: true });
+    initializeReminderTimers();
     App.Editor.setSaveStatus("saved");
   }
 
@@ -129,6 +134,18 @@
     onElement("bulkDeleteButton", "click", deleteSelectedNotes);
     onElement("clearSelectionButton", "click", clearNoteSelection);
     onElement("settingsButton", "click", openSettings);
+    onElement("remindersButton", "click", () => openReminderManager({ captureSelection: true }));
+    onElement("reminderStripButton", "click", () => openReminderManager({ captureSelection: false }));
+    onElement("reminderCloseButton", "click", closeReminderManager);
+    onElement("reminderCancelButton", "click", () => resetReminderForm(currentNote(), { keepAnchor: false }));
+    onElement("reminderUseSelectionButton", "click", captureSelectionForReminder);
+    onElement("reminderClearSelectionButton", "click", clearReminderDraftAnchor);
+    onElement("reminderForm", "submit", handleReminderFormSubmit);
+    onElement("reminderList", "click", handleReminderListClick);
+    document.querySelectorAll("[data-reminder-offset-minutes]").forEach((button) => {
+      button.addEventListener("click", () => setReminderFormDueAt(App.Reminders.isoInMinutes(button.dataset.reminderOffsetMinutes)));
+    });
+    onElement("reminderTomorrowButton", "click", () => setReminderFormDueAt(App.Reminders.tomorrowMorningIso()));
     onElement("importButton", "click", () => {
       const input = byId("importInput");
       if (input) {
@@ -195,7 +212,8 @@
       content: normalizeStoredContent(note.content),
       pinned: Boolean(note.pinned),
       createdAt,
-      updatedAt: normalizeStoredDate(note.updatedAt, createdAt)
+      updatedAt: normalizeStoredDate(note.updatedAt, createdAt),
+      reminders: App.Reminders ? App.Reminders.normalizeReminders(note.reminders, note.id) : []
     };
   }
 
@@ -246,6 +264,7 @@
     const visibleNotes = App.Notes.filterAndSort(notes, searchQuery, settings.sortBy);
     App.UI.renderNoteList(visibleNotes, selectedId, notes.length, selectedIds);
     App.UI.updateSelectionBar(selectedIds.size);
+    renderCurrentReminderState();
   }
 
   function pruneSelectedIds() {
@@ -334,6 +353,8 @@
       await toggleCurrentPin();
     } else if (action === "duplicate") {
       await duplicateCurrentNote();
+    } else if (action === "reminders") {
+      await openReminderManager({ captureSelection: false });
     } else if (action === "export") {
       await exportCurrentNote();
     } else if (action === "delete") {
@@ -480,6 +501,7 @@
       App.UI.showToast("Die Notiz konnte nicht gelöscht werden.", "error");
       return;
     }
+    clearReminderTimersForNote(note.id);
     notes = notes.filter((item) => item.id !== note.id);
     dirtyIds.delete(note.id);
     selectedIds.delete(note.id);
@@ -579,6 +601,7 @@
       App.UI.showToast("Die ausgewählten Notizen konnten nicht gelöscht werden.", "error");
       return;
     }
+    idsToDelete.forEach((id) => clearReminderTimersForNote(id));
     notes = notes.filter((note) => !idsToDelete.has(note.id));
     selectedIds.clear();
 
@@ -696,7 +719,7 @@
       try {
         const text = await readFileText(file);
         const result = App.Storage.parseImportData(text, file.name, file.type);
-        importedNotes.push(...result.notes);
+        importedNotes.push(...result.notes.map(normalizeStoredNote).filter(Boolean));
         skippedEntries += result.skipped || 0;
       } catch (error) {
         errors.push(`${file.name}: ${error.message || "Import fehlgeschlagen."}`);
@@ -711,6 +734,7 @@
     try {
       await storage.saveNotes(importedNotes);
       notes.push(...importedNotes);
+      importedNotes.forEach((note) => scheduleNoteReminders(note));
       selectedIds.clear();
       await selectNote(importedNotes[0].id);
       const suffixParts = [];
@@ -740,6 +764,578 @@
       reader.onerror = () => reject(reader.error || new Error("Datei konnte nicht gelesen werden."));
       reader.readAsText(file);
     });
+  }
+
+  function reminderFormElements() {
+    const form = document.getElementById("reminderForm");
+    if (!form || !form.elements) {
+      return null;
+    }
+    return {
+      form,
+      reminderId: form.elements.reminderId,
+      date: form.elements.reminderDate,
+      time: form.elements.reminderTime,
+      previewText: form.elements.reminderPreviewText,
+      soundEnabled: form.elements.reminderSoundEnabled,
+      selectionSource: form.elements.reminderSelectionSource,
+      error: document.getElementById("reminderFormError"),
+      selectionPreview: document.getElementById("reminderSelectionPreview"),
+      formTitle: document.getElementById("reminderFormTitle")
+    };
+  }
+
+  function renderCurrentReminderState() {
+    const note = currentNote();
+    const button = document.getElementById("remindersButton");
+    const badge = document.getElementById("reminderButtonBadge");
+    const strip = document.getElementById("reminderStrip");
+    const stripTitle = document.getElementById("reminderStripTitle");
+    const stripMeta = document.getElementById("reminderStripMeta");
+    if (!button || !badge || !strip || !stripTitle || !stripMeta || !App.Reminders) {
+      return;
+    }
+
+    const summary = note ? App.Reminders.noteSummary(note) : { totalCount: 0, activeCount: 0, next: null };
+    button.disabled = !note;
+    badge.hidden = !summary.activeCount;
+    badge.textContent = summary.activeCount ? String(Math.min(summary.activeCount, 99)) : "";
+    button.classList.toggle("has-active-reminders", Boolean(summary.activeCount));
+
+    strip.hidden = !note || !summary.totalCount;
+    if (!note || !summary.totalCount) {
+      return;
+    }
+
+    if (summary.activeCount && summary.next) {
+      stripTitle.textContent = summary.activeCount === 1 ? "1 aktive Erinnerung" : `${summary.activeCount} aktive Erinnerungen`;
+      stripMeta.textContent = `Nächste: ${App.Reminders.formatDueAt(summary.next.dueAt)}`;
+    } else {
+      stripTitle.textContent = "Keine aktive Erinnerung";
+      stripMeta.textContent = "Verpasste, ausgelöste oder deaktivierte Einträge vorhanden";
+    }
+  }
+
+  async function openReminderManager(options = {}) {
+    let note = currentNote();
+    if (!note || !App.Reminders) {
+      return;
+    }
+
+    const saved = await saveCurrentNote(true);
+    if (!saved) {
+      return;
+    }
+
+    note = currentNote();
+    if (!note) {
+      return;
+    }
+
+    reminderDialogNoteId = note.id;
+    reminderDraftAnchor = options.captureSelection && App.Editor.getSelectionAnchor
+      ? App.Editor.getSelectionAnchor()
+      : null;
+
+    renderReminderDialog(note);
+    resetReminderForm(note, { keepAnchor: true });
+    const dialog = document.getElementById("reminderDialog");
+    if (dialog && App.UI.openDialog) {
+      App.UI.openDialog(dialog);
+    }
+  }
+
+  function closeReminderManager() {
+    const dialog = document.getElementById("reminderDialog");
+    if (dialog && App.UI.closeDialog) {
+      App.UI.closeDialog(dialog, "cancel");
+    }
+  }
+
+  function setReminderFormError(message) {
+    const elements = reminderFormElements();
+    if (!elements || !elements.error) {
+      return;
+    }
+    elements.error.textContent = message || "";
+    elements.error.hidden = !message;
+  }
+
+  function setReminderFormDueAt(isoValue) {
+    const elements = reminderFormElements();
+    if (!elements || !App.Reminders) {
+      return;
+    }
+    const values = App.Reminders.inputValuesFromIso(isoValue);
+    elements.date.value = values.date;
+    elements.time.value = values.time;
+    setReminderFormError("");
+  }
+
+  function renderDraftAnchor() {
+    const elements = reminderFormElements();
+    if (!elements || !elements.selectionPreview) {
+      return;
+    }
+    elements.selectionPreview.textContent = reminderDraftAnchor && reminderDraftAnchor.text
+      ? reminderDraftAnchor.text.slice(0, 180)
+      : "Keine Textauswahl";
+    elements.selectionPreview.classList.toggle("is-empty", !reminderDraftAnchor);
+    if (elements.selectionSource && reminderDraftAnchor && reminderDraftAnchor.start >= 0 && reminderDraftAnchor.end > reminderDraftAnchor.start) {
+      const start = Math.min(reminderDraftAnchor.start, elements.selectionSource.value.length);
+      const end = Math.min(reminderDraftAnchor.end, elements.selectionSource.value.length);
+      if (end > start) {
+        elements.selectionSource.setSelectionRange(start, end);
+      }
+    }
+  }
+
+  function resetReminderForm(note, options = {}) {
+    const elements = reminderFormElements();
+    if (!elements || !App.Reminders) {
+      return;
+    }
+    if (!options.keepAnchor) {
+      reminderDraftAnchor = null;
+    }
+    elements.reminderId.value = "";
+    setReminderFormDueAt(new Date().toISOString());
+    elements.previewText.value = "";
+    elements.soundEnabled.checked = false;
+    if (elements.selectionSource) {
+      elements.selectionSource.value = note ? note.content || "" : "";
+      elements.selectionSource.placeholder = note && note.content ? "" : "Diese Notiz enthält noch keinen Text.";
+    }
+    if (elements.formTitle) {
+      elements.formTitle.textContent = "Erinnerung setzen";
+    }
+    setReminderFormError("");
+    renderDraftAnchor();
+    if (note) {
+      elements.previewText.placeholder = App.Notes.preview(note);
+    }
+  }
+
+  function captureSelectionForReminder() {
+    const elements = reminderFormElements();
+    const source = elements && elements.selectionSource;
+    let anchor = null;
+    if (source && App.Reminders) {
+      anchor = App.Reminders.createTextAnchor(source.value || "", source.selectionStart, source.selectionEnd);
+    }
+    if (!anchor && App.Editor.getSelectionAnchor) {
+      anchor = App.Editor.getSelectionAnchor();
+    }
+    if (!anchor) {
+      App.UI.showToast("Bitte zuerst Text im Notiztext markieren.", "error");
+      return;
+    }
+    reminderDraftAnchor = anchor;
+    renderDraftAnchor();
+    setReminderFormError("");
+    if (source && typeof source.focus === "function") {
+      source.focus({ preventScroll: true });
+    }
+  }
+
+  function clearReminderDraftAnchor() {
+    reminderDraftAnchor = null;
+    renderDraftAnchor();
+  }
+
+  function appendIcon(button, iconId) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", `#${iconId}`);
+    svg.append(use);
+    button.append(svg);
+  }
+
+  function createReminderActionButton(action, iconId, label, danger = false) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `icon-button ${danger ? "danger" : ""}`.trim();
+    button.dataset.reminderAction = action;
+    button.setAttribute("aria-label", label);
+    button.dataset.tooltip = label;
+    appendIcon(button, iconId);
+    return button;
+  }
+
+  function renderReminderDialog(note) {
+    const list = document.getElementById("reminderList");
+    const noteTitle = document.getElementById("reminderDialogNoteTitle");
+    if (!list || !noteTitle || !App.Reminders) {
+      return;
+    }
+
+    const reminders = App.Reminders.normalizeReminders(note && note.reminders, note && note.id);
+    noteTitle.textContent = note ? note.title || "Unbenannte Notiz" : "";
+    list.replaceChildren();
+
+    if (!reminders.length) {
+      const empty = document.createElement("p");
+      empty.className = "reminder-empty";
+      empty.textContent = "Noch keine Erinnerungen für diese Notiz.";
+      list.append(empty);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    reminders.forEach((reminder) => {
+      const row = document.createElement("article");
+      row.className = `reminder-row is-${reminder.status}`;
+      row.dataset.reminderId = reminder.reminderId;
+
+      const main = document.createElement("div");
+      main.className = "reminder-row-main";
+
+      const due = document.createElement("strong");
+      due.textContent = App.Reminders.formatDueAt(reminder.dueAt);
+      const meta = document.createElement("span");
+      meta.className = "reminder-row-meta";
+      const metaParts = [App.Reminders.statusLabel(reminder.status)];
+      if (reminder.soundEnabled) {
+        metaParts.push("Ton");
+      }
+      if (reminder.anchor) {
+        metaParts.push("Auswahl");
+      }
+      meta.textContent = metaParts.join(" | ");
+      const excerpt = document.createElement("span");
+      excerpt.className = "reminder-row-excerpt";
+      excerpt.textContent = App.Reminders.excerptForReminder(note, reminder);
+      main.append(due, meta, excerpt);
+
+      const actions = document.createElement("div");
+      actions.className = "reminder-row-actions";
+      actions.append(
+        createReminderActionButton("edit", "icon-edit", "Erinnerung bearbeiten"),
+        createReminderActionButton(
+          "toggle",
+          reminder.status === "active" ? "icon-bell-off" : "icon-bell",
+          reminder.status === "active" ? "Erinnerung deaktivieren" : "Erinnerung aktivieren"
+        ),
+        createReminderActionButton("delete", "icon-trash", "Erinnerung löschen", true)
+      );
+
+      row.append(main, actions);
+      fragment.append(row);
+    });
+    list.append(fragment);
+  }
+
+  async function handleReminderFormSubmit(event) {
+    event.preventDefault();
+    const elements = reminderFormElements();
+    const note = noteById(reminderDialogNoteId || selectedId);
+    if (!elements || !note || !App.Reminders) {
+      return;
+    }
+
+    const dueAt = App.Reminders.parseLocalDateTime(elements.date.value, elements.time.value);
+    if (!dueAt) {
+      setReminderFormError("Bitte ein gültiges Datum und eine gültige Uhrzeit eintragen.");
+      return;
+    }
+    if (new Date(dueAt).getTime() <= Date.now()) {
+      setReminderFormError("Der Erinnerungszeitpunkt muss in der Zukunft liegen.");
+      return;
+    }
+
+    const reminderId = elements.reminderId.value;
+    const existing = reminderId ? App.Reminders.findReminder(note, reminderId) : null;
+    let nextReminder;
+    try {
+      nextReminder = existing
+        ? App.Reminders.updateReminder(existing, {
+          dueAt,
+          previewText: elements.previewText.value,
+          soundEnabled: elements.soundEnabled.checked,
+          anchor: reminderDraftAnchor,
+          status: "active",
+          triggeredAt: "",
+          missedAt: "",
+          dismissedAt: ""
+        })
+        : App.Reminders.createReminder({
+          noteId: note.id,
+          dueAt,
+          previewText: elements.previewText.value,
+          soundEnabled: elements.soundEnabled.checked,
+          anchor: reminderDraftAnchor
+        });
+    } catch (error) {
+      setReminderFormError(error.message || "Die Erinnerung konnte nicht erstellt werden.");
+      return;
+    }
+
+    const nextReminders = App.Reminders.withReminder(note.reminders, nextReminder);
+    const saved = await saveNoteReminders(note.id, nextReminders);
+    if (!saved) {
+      return;
+    }
+
+    await App.Notifications.requestPermissionIfUseful();
+    resetReminderForm(noteById(note.id), { keepAnchor: false });
+    App.UI.showToast(existing ? "Erinnerung aktualisiert." : "Erinnerung gesetzt.");
+  }
+
+  async function handleReminderListClick(event) {
+    const button = closestTarget(event.target, "[data-reminder-action]");
+    if (!button) {
+      return;
+    }
+
+    const row = closestTarget(button, "[data-reminder-id]");
+    const note = noteById(reminderDialogNoteId || selectedId);
+    if (!row || !note || !App.Reminders) {
+      return;
+    }
+
+    const reminder = App.Reminders.findReminder(note, row.dataset.reminderId);
+    if (!reminder) {
+      App.UI.showToast("Diese Erinnerung wurde nicht gefunden.", "error");
+      renderReminderDialog(note);
+      return;
+    }
+
+    if (button.dataset.reminderAction === "edit") {
+      editReminderInForm(note, reminder);
+      return;
+    }
+
+    if (button.dataset.reminderAction === "delete") {
+      const nextReminders = App.Reminders.withoutReminder(note.reminders, reminder.reminderId, note.id);
+      const saved = await saveNoteReminders(note.id, nextReminders);
+      if (saved) {
+        resetReminderForm(noteById(note.id), { keepAnchor: false });
+        App.UI.showToast("Erinnerung gelöscht.");
+      }
+      return;
+    }
+
+    if (button.dataset.reminderAction === "toggle") {
+      await toggleReminderStatus(note, reminder);
+    }
+  }
+
+  function editReminderInForm(note, reminder) {
+    const elements = reminderFormElements();
+    if (!elements || !App.Reminders) {
+      return;
+    }
+    elements.reminderId.value = reminder.reminderId;
+    setReminderFormDueAt(reminder.dueAt);
+    elements.previewText.value = reminder.previewText || "";
+    elements.soundEnabled.checked = Boolean(reminder.soundEnabled);
+    if (elements.selectionSource) {
+      elements.selectionSource.value = note ? note.content || "" : "";
+    }
+    reminderDraftAnchor = reminder.anchor || null;
+    if (elements.formTitle) {
+      elements.formTitle.textContent = "Erinnerung bearbeiten";
+    }
+    renderDraftAnchor();
+    setReminderFormError("");
+    elements.date.focus();
+  }
+
+  async function toggleReminderStatus(note, reminder) {
+    const now = new Date().toISOString();
+    let patch;
+    if (reminder.status === "active") {
+      patch = { status: "dismissed", dismissedAt: now };
+    } else {
+      if (new Date(reminder.dueAt).getTime() <= Date.now()) {
+        App.UI.showToast("Abgelaufene Erinnerungen bitte mit neuem Zeitpunkt bearbeiten.", "error");
+        return;
+      }
+      patch = { status: "active", dismissedAt: "", triggeredAt: "", missedAt: "" };
+    }
+
+    const updatedReminder = App.Reminders.updateReminder(reminder, patch);
+    const saved = await saveNoteReminders(note.id, App.Reminders.withReminder(note.reminders, updatedReminder));
+    if (saved) {
+      App.UI.showToast(updatedReminder.status === "active" ? "Erinnerung aktiviert." : "Erinnerung deaktiviert.");
+    }
+  }
+
+  async function saveNoteReminders(noteId, reminders) {
+    const note = noteById(noteId);
+    if (!note || !App.Reminders) {
+      App.UI.showToast("Die zugehörige Notiz wurde nicht gefunden.", "error");
+      return false;
+    }
+
+    const stamp = note.updatedAt;
+    const previous = note;
+    const updated = {
+      ...note,
+      reminders: App.Reminders.normalizeReminders(reminders, note.id)
+    };
+    replaceNote(updated);
+
+    try {
+      await storage.saveNote(updated);
+      const latest = noteById(noteId);
+      if (latest && latest.updatedAt === stamp) {
+        dirtyIds.delete(noteId);
+      }
+      scheduleNoteReminders(updated);
+      refreshList();
+      if (reminderDialogNoteId === noteId) {
+        renderReminderDialog(updated);
+      }
+      if (selectedId === noteId) {
+        App.Editor.setSaveStatus(dirtyIds.has(noteId) ? "dirty" : "saved");
+      }
+      return true;
+    } catch (error) {
+      replaceNote(previous);
+      scheduleNoteReminders(previous);
+      refreshList();
+      if (reminderDialogNoteId === noteId) {
+        renderReminderDialog(previous);
+      }
+      App.UI.showToast("Erinnerungen konnten nicht gespeichert werden.", "error");
+      return false;
+    }
+  }
+
+  function initializeReminderTimers() {
+    reminderTimers.forEach((entry) => global.clearTimeout(entry.timerId));
+    reminderTimers.clear();
+    notes.forEach((note) => scheduleNoteReminders(note, { initial: true }));
+  }
+
+  function clearReminderTimersForNote(noteId) {
+    Array.from(reminderTimers.entries()).forEach(([timerKey, entry]) => {
+      if (entry.noteId === noteId) {
+        global.clearTimeout(entry.timerId);
+        reminderTimers.delete(timerKey);
+      }
+    });
+  }
+
+  function reminderTimerKey(noteId, reminderId) {
+    return `${noteId}::${reminderId}`;
+  }
+
+  function scheduleNoteReminders(note, options = {}) {
+    if (!note || !App.Reminders) {
+      return;
+    }
+    clearReminderTimersForNote(note.id);
+    App.Reminders.activeReminders(note).forEach((reminder) => {
+      const dueTime = new Date(reminder.dueAt).getTime();
+      scheduleReminderTimer(note.id, reminder, {
+        missed: Boolean(options.initial && dueTime <= Date.now())
+      });
+    });
+  }
+
+  function scheduleReminderTimer(noteId, reminder, options = {}) {
+    const dueTime = new Date(reminder.dueAt).getTime();
+    if (Number.isNaN(dueTime)) {
+      return;
+    }
+
+    const delay = dueTime - Date.now();
+    const reminderId = reminder.reminderId;
+    const timerKey = reminderTimerKey(noteId, reminderId);
+    const timerId = global.setTimeout(() => {
+      reminderTimers.delete(timerKey);
+      if (delay > MAX_TIMER_DELAY_MS) {
+        const latestNote = noteById(noteId);
+        const latestReminder = App.Reminders.findReminder(latestNote, reminderId);
+        if (latestReminder && latestReminder.status === "active") {
+          scheduleReminderTimer(noteId, latestReminder, options);
+        }
+        return;
+      }
+      void triggerReminder(noteId, reminderId, { missed: Boolean(options.missed) });
+    }, Math.max(0, Math.min(delay, MAX_TIMER_DELAY_MS)));
+
+    reminderTimers.set(timerKey, { noteId, reminderId, timerId });
+  }
+
+  async function triggerReminder(noteId, reminderId, options = {}) {
+    const note = noteById(noteId);
+    if (!note || !App.Reminders) {
+      clearReminderTimer(noteId, reminderId);
+      return;
+    }
+
+    const reminder = App.Reminders.findReminder(note, reminderId);
+    if (!reminder || reminder.status !== "active") {
+      clearReminderTimer(noteId, reminderId);
+      return;
+    }
+
+    const status = options.missed ? "missed" : "triggered";
+    const timeKey = status === "missed" ? "missedAt" : "triggeredAt";
+    const updatedReminder = App.Reminders.updateReminder(reminder, {
+      status,
+      [timeKey]: new Date().toISOString()
+    });
+    const nextReminders = App.Reminders.withReminder(note.reminders, updatedReminder);
+    const saved = await saveNoteReminders(note.id, nextReminders);
+    const latestNote = noteById(note.id) || { ...note, reminders: nextReminders };
+    const latestReminder = App.Reminders.findReminder(latestNote, reminderId) || updatedReminder;
+
+    if (saved) {
+      await App.Notifications.playTone(latestReminder.soundEnabled);
+      await App.Notifications.notifyReminder({
+        title: `${status === "missed" ? "Verpasst" : "Erinnerung"}: ${latestNote.title || "Unbenannte Notiz"}`,
+        body: App.Reminders.excerptForReminder(latestNote, latestReminder),
+        tag: `${latestNote.id}-${latestReminder.reminderId}`,
+        status,
+        onClick: () => {
+          void openTriggeredReminder(latestNote.id, latestReminder.reminderId);
+        }
+      });
+
+      if (selectedId === latestNote.id && latestReminder.anchor) {
+        applyReminderHighlight(latestNote, latestReminder, { silent: true });
+      }
+    }
+  }
+
+  function clearReminderTimer(noteId, reminderId) {
+    const entry = reminderTimers.get(reminderTimerKey(noteId, reminderId));
+    if (entry) {
+      global.clearTimeout(entry.timerId);
+      reminderTimers.delete(reminderTimerKey(noteId, reminderId));
+    }
+  }
+
+  async function openTriggeredReminder(noteId, reminderId) {
+    const note = noteById(noteId);
+    if (!note) {
+      App.UI.showToast("Die Notiz zu dieser Erinnerung wurde nicht gefunden.", "error");
+      clearReminderTimer(noteId, reminderId);
+      return;
+    }
+    await selectNote(noteId, { keepSidebar: true });
+    const latest = noteById(noteId);
+    const reminder = App.Reminders.findReminder(latest, reminderId);
+    if (latest && reminder) {
+      applyReminderHighlight(latest, reminder, { silent: false });
+    }
+  }
+
+  function applyReminderHighlight(note, reminder, options = {}) {
+    if (!App.Highlighting || !reminder.anchor) {
+      return { found: false };
+    }
+    const result = App.Highlighting.highlight(note, reminder);
+    if (!result.found && !options.silent) {
+      App.UI.showToast("Der markierte Notizbereich wurde nicht mehr eindeutig gefunden.", "error");
+    }
+    return result;
   }
 
   async function openSettings() {

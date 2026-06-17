@@ -181,6 +181,7 @@
   function setControlsEnabled(enabled) {
     const ids = [
       "renameNoteButton",
+      "remindersButton",
       "pinNoteButton",
       "duplicateNoteButton",
       "exportNoteButton",
@@ -264,6 +265,17 @@
     return elements.textarea ? elements.textarea.value : "";
   }
 
+  function getSelectionAnchor() {
+    if (!elements.textarea || elements.textarea.disabled || !App.Reminders) {
+      return null;
+    }
+    return App.Reminders.createTextAnchor(
+      elements.textarea.value || "",
+      elements.textarea.selectionStart,
+      elements.textarea.selectionEnd
+    );
+  }
+
   App.Editor = {
     init,
     loadNote,
@@ -278,6 +290,7 @@
     isFullscreen,
     exitFullscreen,
     getTitle,
-    getContent
+    getContent,
+    getSelectionAnchor
   };
 })(window);

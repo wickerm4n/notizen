@@ -260,6 +260,23 @@
     requestAnimationFrame(() => dialog.classList.add("is-open"));
   }
 
+  function openModalHost() {
+    return document.querySelector(".modal[open]:not(.is-closing)") || document.querySelector(".modal[open]");
+  }
+
+  function syncToastHost() {
+    if (!elements.toastStack) {
+      return;
+    }
+
+    const modalHost = openModalHost();
+    const host = modalHost || document.body;
+    if (elements.toastStack.parentElement !== host) {
+      host.append(elements.toastStack);
+    }
+    elements.toastStack.classList.toggle("is-in-modal", Boolean(modalHost));
+  }
+
   function closeDialog(dialog, returnValue = "cancel") {
     if (!dialog) {
       return;
@@ -284,6 +301,7 @@
         dialog.removeAttribute("open");
         dialog.dispatchEvent(new Event("close"));
       }
+      syncToastHost();
     }, 180);
   }
 
@@ -359,6 +377,17 @@
       const created = document.createElement("span");
       created.textContent = `Erstellt ${App.Notes.formatRelativeDate(note.createdAt)}`;
       meta.append(updated, created);
+      const reminderSummary = App.Reminders && typeof App.Reminders.noteSummary === "function"
+        ? App.Reminders.noteSummary(note)
+        : null;
+      if (reminderSummary && reminderSummary.activeCount) {
+        const reminderBadge = document.createElement("span");
+        reminderBadge.className = "note-card-reminder";
+        reminderBadge.textContent = reminderSummary.activeCount === 1 && reminderSummary.next
+          ? `Erinnerung ${App.Reminders.formatShortDueAt(reminderSummary.next.dueAt)}`
+          : `${reminderSummary.activeCount} Erinnerungen`;
+        meta.append(reminderBadge);
+      }
 
       main.append(title, preview, meta);
       item.append(checkboxLabel, main);
@@ -535,6 +564,7 @@
       console[type === "error" ? "error" : "log"](message);
       return;
     }
+    syncToastHost();
     const toast = document.createElement("div");
     toast.className = `toast ${type === "error" ? "error" : ""}`.trim();
     toast.textContent = message;
@@ -654,6 +684,8 @@
     chooseExportFormat,
     openSettings,
     setSearchValue,
-    setSortValue
+    setSortValue,
+    openDialog,
+    closeDialog
   };
 })(window);

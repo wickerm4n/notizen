@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "Notizen",
   "short_name": "Notizen",
   "description": "Eine moderne, lokale Notizen-App für den Browser.",
@@ -9,7 +9,7 @@
   "theme_color": "#2f5f9e",
   "icons": [
     {
-      "src": "../icons/app-icon.svg?v=2026.06.16.8",
+      "src": "../icons/app-icon.svg?v=2026.06.17.3",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

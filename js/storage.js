@@ -279,7 +279,8 @@
       content,
       pinned: Boolean(input.pinned || input.favorite || input.favorit),
       createdAt: parseDate(input.createdAt || input.created || input.erstelltAm, now),
-      updatedAt: parseDate(input.updatedAt || input.updated || input.geaendertAm, now)
+      updatedAt: parseDate(input.updatedAt || input.updated || input.geaendertAm, now),
+      reminders: Array.isArray(input.reminders) ? input.reminders : []
     };
   }
 
@@ -448,7 +449,10 @@
         content: note.content,
         pinned: Boolean(note.pinned),
         createdAt: note.createdAt,
-        updatedAt: note.updatedAt
+        updatedAt: note.updatedAt,
+        reminders: App.Reminders
+          ? App.Reminders.normalizeReminders(note.reminders, note.id)
+          : toArray(note.reminders)
       }))
     }, null, 2);
   }
