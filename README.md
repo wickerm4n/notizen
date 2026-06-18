@@ -1,75 +1,64 @@
 # Notizen
 
-Eine moderne, lokale Notizen-App für den Browser. Sie läuft ohne Server, speichert deine Daten im Browser und ist darauf ausgelegt, beim Schreiben, Wiederfinden und Erinnern angenehm unaufdringlich zu bleiben.
+Eine lokale Notizen-App für den Browser. Sie läuft ohne Server, speichert Inhalte direkt im Browser und bietet eine ruhige Oberfläche zum Schreiben, Organisieren und Erinnern.
 
-## Überblick
+## Funktionen
 
-Mit der App kannst du Notizen erstellen, bearbeiten, sortieren, durchsuchen und bei Bedarf mit Erinnerungen versehen. Die Oberfläche unterstützt kurze Alltagsnotizen genauso wie längere Texte mit Markdown-Vorschau.
-
-Wichtige Funktionen:
-
-- Notizen erstellen, umbenennen, duplizieren, löschen und anpinnen
-- Suche, Sortierung und Mehrfachauswahl
-- Editor-, Vorschau- und Split-Ansicht
-- Markdown-Vorschau mit sicherer Darstellung
-- Import und Export von Text-, Markdown- und JSON-Dateien
-- Hell-, Dunkel- und System-Theme
-- Einstellungen für Schriftart, Schriftgröße, Zähler und Startansicht
-- Responsive Darstellung für Desktop, Tablet und Smartphone
-- Erinnerungen pro Notiz mit Datum, Uhrzeit und optionalem Hinweistext
+- Notizen erstellen, bearbeiten, umbenennen, duplizieren und löschen
+- Notizen anpinnen, durchsuchen und sortieren
+- mehrere Notizen auswählen und gemeinsam bearbeiten
+- Markdown schreiben und als Vorschau oder Split-Ansicht anzeigen
+- Notizen als Text-, Markdown- oder JSON-Dateien importieren und exportieren
+- Hell-, Dunkel- und System-Theme nutzen
+- Schriftart, Schriftgröße, Zähler und Startansicht anpassen
+- optimierte Darstellung für Desktop, Tablet und Smartphone
 
 ## Erinnerungen
 
-Über den Glocken-Button in der Notiz-Toolbar kannst du Erinnerungen für die aktuelle Notiz verwalten. Pro Notiz sind mehrere Erinnerungen möglich.
+Für jede Notiz können eine oder mehrere Erinnerungen angelegt werden. Eine Erinnerung besteht aus einem Datum, einer Uhrzeit und optionalen Zusatzfunktionen.
 
-Eine Erinnerung kann enthalten:
+Mögliche Optionen:
 
-- Datum und Uhrzeit
-- einen optionalen Hinweistext
-- ausgewählte Notizzeilen, die beim Öffnen hervorgehoben werden
-- Browser-Benachrichtigung, In-App-Dialog oder beides
-- optionales Tab-Blinken
-- optionalen dezenten Erinnerungston
+- eigener Hinweistext
+- auswählbare Notizzeilen zur späteren Hervorhebung
+- Browser-Benachrichtigung
+- Dialog innerhalb der App
+- blinkender Browser-Tab
+- dezenter Erinnerungston
 
-Für schnelle Erinnerungen gibt es Schaltflächen wie `10 Min`, `1 Std` und `Morgen`. Datum und Uhrzeit können direkt eingetragen werden; im Erinnerungsdialog lassen sich die Werte auch mit dem Mausrad hoch- oder runterstellen.
-
-Wenn kein Hinweistext eingetragen wurde, zeigt die App auch keinen künstlichen Hinweistext an. Browser-Benachrichtigungen, In-App-Dialoge und interne Hinweise bleiben dann bewusst schlank und konzentrieren sich auf Titel, Zeitpunkt und ausgewählte Zeilen.
-
-## Notizzeilen Auswählen
-
-Im Erinnerungsdialog muss kein Text mehr mit der Maus markiert werden. Stattdessen werden die vorhandenen Notizzeilen als klickbare Liste angezeigt.
-
-Du kannst eine oder mehrere Zeilen anklicken. Ausgewählte Zeilen werden klar hervorgehoben und zusammen mit der Erinnerung gespeichert. Wenn die Erinnerung später geöffnet wird, springt die App zur passenden Notiz und hebt die gespeicherten Zeilen temporär hervor.
-
-Falls sich die Notiz zwischenzeitlich geändert hat und eine gespeicherte Zeile nicht mehr eindeutig gefunden wird, öffnet die App trotzdem die Notiz und zeigt einen verständlichen Hinweis an. Der eigentliche Notizinhalt wird dadurch nicht verändert.
+Beim Auslösen einer Erinnerung kann die App die passende Notiz öffnen und ausgewählte Zeilen kurz hervorheben. Wenn kein Hinweistext hinterlegt ist, bleiben Benachrichtigungen und Dialoge entsprechend knapp.
 
 ## Benachrichtigungen
 
-Beim Auslösen einer Erinnerung kann die App je nach Einstellung unterschiedlich reagieren:
+Erinnerungen können im Browser, innerhalb der App oder in beiden Varianten angezeigt werden. Falls Browser-Benachrichtigungen nicht erlaubt sind, nutzt die App weiterhin interne Hinweise.
 
-- eine Browser-Benachrichtigung anzeigen
-- einen gestalteten Dialog innerhalb der App öffnen
-- beide Varianten gleichzeitig nutzen
-- den Browser-Tab kurz blinken lassen
-- optional einen dezenten Ton abspielen
-
-Wenn Browser-Benachrichtigungen nicht erlaubt oder nicht verfügbar sind, bleibt die App nutzbar und zeigt die Erinnerung innerhalb der App an. Hinweise und Fehler erscheinen oben rechts als gut sichtbare App-Hinweise und blenden sanft ein und aus.
+Hinweise und Fehler erscheinen oben rechts als gut sichtbare Meldungen und blenden sanft ein und aus.
 
 ## Speicherung
 
-Notizen, Einstellungen und Erinnerungen werden lokal im Browser gespeichert. Standardmäßig nutzt die App IndexedDB; falls das nicht verfügbar ist, wird localStorage als Fallback verwendet.
+Alle Notizen, Einstellungen und Erinnerungen werden lokal im Browser gespeichert. Es gibt keinen Server-Upload und keine Anmeldung.
 
-Die Daten bleiben erhalten, solange der lokale Browser-Speicher nicht gelöscht wird. Es gibt keinen Server-Upload und keine Anmeldung.
+Standardmäßig nutzt die App IndexedDB. Falls IndexedDB nicht verfügbar ist, wird localStorage als Fallback verwendet. Die Daten bleiben erhalten, solange der lokale Browser-Speicher nicht gelöscht wird.
 
 ## Import und Export
 
-Du kannst Notizen als Text-, Markdown- oder JSON-Dateien exportieren. JSON-Exporte enthalten auch gespeicherte Erinnerungen.
+Notizen können einzeln oder gesammelt exportiert werden. JSON-Exporte enthalten auch gespeicherte Erinnerungen.
 
-Beim Import prüft die App die Dateien und fängt ungültige oder beschädigte Inhalte ab. Notizinhalte werden nicht ungefiltert als HTML dargestellt.
+Beim Import prüft die App die Dateien und fängt ungültige oder beschädigte Inhalte ab. Inhalte werden sicher als Text behandelt und nicht ungefiltert als HTML ausgegeben.
+
+## Nutzung
+
+Die App kann direkt über `index.html` geöffnet werden.
+
+Für lokale Tests kann ein einfacher Webserver verwendet werden:
+
+```bash
+python -m http.server 8000
+```
+
+Danach ist die App unter `http://localhost:8000` erreichbar.
 
 ## Projektstruktur
-
-Die App ist modular aufgebaut:
 
 ```text
 .
@@ -95,20 +84,8 @@ Die App ist modular aufgebaut:
     `-- update.js
 ```
 
-## Nutzung
-
-Die App kann direkt über `index.html` geöffnet werden.
-
-Für lokale Tests kann auch ein einfacher Webserver verwendet werden:
-
-```bash
-python -m http.server 8000
-```
-
-Danach ist die App unter `http://localhost:8000` erreichbar.
-
 ## Hinweise
 
-Browser-Benachrichtigungen und Töne hängen von den Berechtigungen und Autoplay-Regeln des jeweiligen Browsers ab. Wenn der Browser etwas blockiert, bricht die App nicht ab, sondern nutzt die internen Hinweise.
+Browser-Benachrichtigungen und Töne hängen von den Berechtigungen und Regeln des jeweiligen Browsers ab. Wenn eine Funktion blockiert wird, bleibt die App nutzbar und zeigt Hinweise innerhalb der Oberfläche an.
 
-Alle Inhalte wie Notizen, Hinweistexte und ausgewählte Zeilen werden als Text behandelt. So bleiben Vorschau, Dialoge und Benachrichtigungen gegen ungefilterte HTML-Ausgabe geschützt.
+Die App ist für UTF-8 ausgelegt, damit Umlaute und Sonderzeichen korrekt dargestellt werden.
