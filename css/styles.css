@@ -1523,9 +1523,8 @@ textarea.reminder-preview-input {
 }
 
 .toast.is-hiding {
-  opacity: 0;
-  filter: blur(2px);
-  transform: translateY(-10px) scale(0.98);
+  pointer-events: none;
+  animation: toast-out 320ms ease both;
 }
 
 @media (max-width: 560px) {
@@ -1841,6 +1840,19 @@ body.is-dragging-files::after {
     opacity: 1;
     filter: blur(0);
     transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(-10px) scale(0.98);
   }
 }
 

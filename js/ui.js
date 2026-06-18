@@ -2,7 +2,7 @@
   "use strict";
 
   const App = global.NotizenApp || (global.NotizenApp = {});
-  const TOAST_HIDE_ANIMATION_MS = 260;
+  const TOAST_HIDE_ANIMATION_MS = 320;
   const MOBILE_LAYOUT_QUERY = "(max-width: 980px), (max-height: 560px) and (hover: none)";
   const elements = {};
   const REQUIRED_ELEMENTS = [
