@@ -18,7 +18,8 @@
   const MAX_TIMER_DELAY_MS = 24 * 60 * 60 * 1000;
   let dragImportDepth = 0;
   let reminderDialogNoteId = "";
-  let reminderDraftAnchor = null;
+  let reminderDraftLineSelection = null;
+  let reminderDraftLineIndexes = new Set();
   const reminderTimers = new Map();
 
   document.addEventListener("DOMContentLoaded", init);
@@ -137,11 +138,15 @@
     onElement("remindersButton", "click", () => openReminderManager({ captureSelection: true }));
     onElement("reminderStripButton", "click", () => openReminderManager({ captureSelection: false }));
     onElement("reminderCloseButton", "click", closeReminderManager);
-    onElement("reminderCancelButton", "click", () => resetReminderForm(currentNote(), { keepAnchor: false }));
+    onElement("reminderCancelButton", "click", () => resetReminderForm(currentNote(), { keepSelection: false }));
     onElement("reminderUseSelectionButton", "click", captureSelectionForReminder);
     onElement("reminderClearSelectionButton", "click", clearReminderDraftAnchor);
     onElement("reminderForm", "submit", handleReminderFormSubmit);
     onElement("reminderList", "click", handleReminderListClick);
+    onElement("reminderLineList", "click", handleReminderLineListClick);
+    onElement("reminderLineList", "keydown", handleReminderLineListKeydown);
+    onElement("reminderDate", "wheel", handleReminderDateTimeWheel);
+    onElement("reminderTime", "wheel", handleReminderDateTimeWheel);
     document.querySelectorAll("[data-reminder-offset-minutes]").forEach((button) => {
       button.addEventListener("click", () => setReminderFormDueAt(App.Reminders.isoInMinutes(button.dataset.reminderOffsetMinutes)));
     });
@@ -778,9 +783,12 @@
       time: form.elements.reminderTime,
       previewText: form.elements.reminderPreviewText,
       soundEnabled: form.elements.reminderSoundEnabled,
-      selectionSource: form.elements.reminderSelectionSource,
+      browserNotification: form.elements.reminderBrowserNotification,
+      appDialog: form.elements.reminderAppDialog,
+      tabBlink: form.elements.reminderTabBlink,
       error: document.getElementById("reminderFormError"),
       selectionPreview: document.getElementById("reminderSelectionPreview"),
+      lineList: document.getElementById("reminderLineList"),
       formTitle: document.getElementById("reminderFormTitle")
     };
   }
@@ -833,12 +841,15 @@
     }
 
     reminderDialogNoteId = note.id;
-    reminderDraftAnchor = options.captureSelection && App.Editor.getSelectionAnchor
+    const capturedAnchor = options.captureSelection && App.Editor.getSelectionAnchor
       ? App.Editor.getSelectionAnchor()
       : null;
+    setReminderDraftLineSelection(
+      capturedAnchor ? App.Reminders.createLineSelectionFromAnchor(note.content || "", capturedAnchor) : null
+    );
 
     renderReminderDialog(note);
-    resetReminderForm(note, { keepAnchor: true });
+    resetReminderForm(note, { keepSelection: true });
     const dialog = document.getElementById("reminderDialog");
     if (dialog && App.UI.openDialog) {
       App.UI.openDialog(dialog);
@@ -857,8 +868,11 @@
     if (!elements || !elements.error) {
       return;
     }
-    elements.error.textContent = message || "";
-    elements.error.hidden = !message;
+    elements.error.textContent = "";
+    elements.error.hidden = true;
+    if (message && App.UI && typeof App.UI.showToast === "function") {
+      App.UI.showToast(message, "error");
+    }
   }
 
   function setReminderFormDueAt(isoValue) {
@@ -872,22 +886,134 @@
     setReminderFormError("");
   }
 
-  function renderDraftAnchor() {
-    const elements = reminderFormElements();
-    if (!elements || !elements.selectionPreview) {
+  function ensureReminderWheelValue(input) {
+    if (!input || input.value || !App.Reminders) {
       return;
     }
-    elements.selectionPreview.textContent = reminderDraftAnchor && reminderDraftAnchor.text
-      ? reminderDraftAnchor.text.slice(0, 180)
-      : "Keine Textauswahl";
-    elements.selectionPreview.classList.toggle("is-empty", !reminderDraftAnchor);
-    if (elements.selectionSource && reminderDraftAnchor && reminderDraftAnchor.start >= 0 && reminderDraftAnchor.end > reminderDraftAnchor.start) {
-      const start = Math.min(reminderDraftAnchor.start, elements.selectionSource.value.length);
-      const end = Math.min(reminderDraftAnchor.end, elements.selectionSource.value.length);
-      if (end > start) {
-        elements.selectionSource.setSelectionRange(start, end);
-      }
+    const values = App.Reminders.inputValuesFromIso(new Date().toISOString());
+    input.value = input.type === "date" ? values.date : values.time;
+  }
+
+  function handleReminderDateTimeWheel(event) {
+    const input = event.currentTarget;
+    if (!input || input.disabled || input.readOnly) {
+      return;
     }
+    if (!event.deltaY && !event.deltaX) {
+      return;
+    }
+
+    event.preventDefault();
+    try {
+      input.focus({ preventScroll: true });
+    } catch (error) {
+      input.focus();
+    }
+    ensureReminderWheelValue(input);
+
+    const direction = event.deltaY < 0 || (!event.deltaY && event.deltaX < 0) ? 1 : -1;
+    try {
+      if (direction > 0) {
+        input.stepUp();
+      } else {
+        input.stepDown();
+      }
+    } catch (error) {
+      return;
+    }
+
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    setReminderFormError("");
+  }
+
+  function setReminderDraftLineSelection(selection) {
+    reminderDraftLineSelection = selection || null;
+    reminderDraftLineIndexes = new Set(
+      selection && Array.isArray(selection.selectedLineIndexes)
+        ? selection.selectedLineIndexes.filter((index) => Number.isInteger(index) && index >= 0)
+        : []
+    );
+  }
+
+  function currentReminderDraftLineSelection(note) {
+    if (!note || !App.Reminders || !reminderDraftLineIndexes.size) {
+      return null;
+    }
+    return App.Reminders.createLineSelection(note.content || "", Array.from(reminderDraftLineIndexes));
+  }
+
+  function renderReminderLinePicker(note) {
+    const elements = reminderFormElements();
+    if (!elements || !elements.lineList || !App.Reminders) {
+      return;
+    }
+
+    const content = note ? note.content || "" : "";
+    elements.lineList.replaceChildren();
+
+    if (!content.trim()) {
+      const empty = document.createElement("p");
+      empty.className = "reminder-line-empty";
+      empty.textContent = "Diese Notiz enthält noch keinen Text.";
+      elements.lineList.append(empty);
+      return;
+    }
+
+    const selectableLines = App.Reminders.contentLines(content).filter((line) => line.text.trim());
+    if (!selectableLines.length) {
+      const empty = document.createElement("p");
+      empty.className = "reminder-line-empty";
+      empty.textContent = "Diese Notiz enthält keine auswählbaren Textzeilen.";
+      elements.lineList.append(empty);
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    selectableLines.forEach((line) => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "reminder-line-option";
+      option.dataset.reminderLineIndex = String(line.index);
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(reminderDraftLineIndexes.has(line.index)));
+      option.classList.toggle("is-selected", reminderDraftLineIndexes.has(line.index));
+
+      const number = document.createElement("span");
+      number.className = "reminder-line-number";
+      number.textContent = String(line.index + 1);
+      const text = document.createElement("span");
+      text.className = "reminder-line-text";
+      text.textContent = line.text;
+      option.append(number, text);
+      fragment.append(option);
+    });
+
+    elements.lineList.append(fragment);
+  }
+
+  function renderDraftLineSelection(note = noteById(reminderDialogNoteId || selectedId)) {
+    const elements = reminderFormElements();
+    if (!elements || !elements.selectionPreview || !App.Reminders) {
+      return;
+    }
+
+    const currentSelection = currentReminderDraftLineSelection(note);
+    if (currentSelection) {
+      reminderDraftLineSelection = currentSelection;
+    }
+
+    const count = reminderDraftLineSelection && reminderDraftLineSelection.selectedLineTexts
+      ? reminderDraftLineSelection.selectedLineTexts.length
+      : 0;
+    const excerpt = reminderDraftLineSelection
+      ? App.Reminders.lineSelectionExcerpt(reminderDraftLineSelection, 180)
+      : "";
+    elements.selectionPreview.textContent = count
+      ? `${count} ${count === 1 ? "Zeile" : "Zeilen"} ausgewählt: ${excerpt}`
+      : "Keine Zeile ausgewählt";
+    elements.selectionPreview.classList.toggle("is-empty", !count);
+    renderReminderLinePicker(note);
   }
 
   function resetReminderForm(note, options = {}) {
@@ -895,52 +1021,88 @@
     if (!elements || !App.Reminders) {
       return;
     }
-    if (!options.keepAnchor) {
-      reminderDraftAnchor = null;
+    if (!options.keepSelection && !options.keepAnchor) {
+      setReminderDraftLineSelection(null);
     }
     elements.reminderId.value = "";
     setReminderFormDueAt(new Date().toISOString());
     elements.previewText.value = "";
     elements.soundEnabled.checked = false;
-    if (elements.selectionSource) {
-      elements.selectionSource.value = note ? note.content || "" : "";
-      elements.selectionSource.placeholder = note && note.content ? "" : "Diese Notiz enthält noch keinen Text.";
+    if (elements.browserNotification) {
+      elements.browserNotification.checked = true;
+    }
+    if (elements.appDialog) {
+      elements.appDialog.checked = true;
+    }
+    if (elements.tabBlink) {
+      elements.tabBlink.checked = false;
     }
     if (elements.formTitle) {
       elements.formTitle.textContent = "Erinnerung setzen";
     }
     setReminderFormError("");
-    renderDraftAnchor();
-    if (note) {
-      elements.previewText.placeholder = App.Notes.preview(note);
-    }
+    renderDraftLineSelection(note);
+    elements.previewText.placeholder = "Optionalen Hinweistext eingeben";
   }
 
   function captureSelectionForReminder() {
-    const elements = reminderFormElements();
-    const source = elements && elements.selectionSource;
-    let anchor = null;
-    if (source && App.Reminders) {
-      anchor = App.Reminders.createTextAnchor(source.value || "", source.selectionStart, source.selectionEnd);
-    }
-    if (!anchor && App.Editor.getSelectionAnchor) {
-      anchor = App.Editor.getSelectionAnchor();
-    }
-    if (!anchor) {
-      App.UI.showToast("Bitte zuerst Text im Notiztext markieren.", "error");
+    const note = noteById(reminderDialogNoteId || selectedId);
+    if (!note || !App.Reminders) {
       return;
     }
-    reminderDraftAnchor = anchor;
-    renderDraftAnchor();
-    setReminderFormError("");
-    if (source && typeof source.focus === "function") {
-      source.focus({ preventScroll: true });
+
+    const selection = currentReminderDraftLineSelection(note);
+    if (!selection) {
+      App.UI.showToast("Bitte zuerst eine oder mehrere Notizzeilen anklicken.", "error");
+      return;
     }
+
+    reminderDraftLineSelection = selection;
+    renderDraftLineSelection(note);
+    setReminderFormError("");
+    App.UI.showToast("Zeilenauswahl übernommen.");
   }
 
   function clearReminderDraftAnchor() {
-    reminderDraftAnchor = null;
-    renderDraftAnchor();
+    setReminderDraftLineSelection(null);
+    renderDraftLineSelection();
+  }
+
+  function toggleReminderLineIndex(rawIndex) {
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 0) {
+      return;
+    }
+    if (reminderDraftLineIndexes.has(index)) {
+      reminderDraftLineIndexes.delete(index);
+    } else {
+      reminderDraftLineIndexes.add(index);
+    }
+    if (!reminderDraftLineIndexes.size) {
+      reminderDraftLineSelection = null;
+    }
+    renderDraftLineSelection();
+    setReminderFormError("");
+  }
+
+  function handleReminderLineListClick(event) {
+    const option = closestTarget(event.target, "[data-reminder-line-index]");
+    if (!option) {
+      return;
+    }
+    toggleReminderLineIndex(option.dataset.reminderLineIndex);
+  }
+
+  function handleReminderLineListKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    const option = closestTarget(event.target, "[data-reminder-line-index]");
+    if (!option) {
+      return;
+    }
+    event.preventDefault();
+    toggleReminderLineIndex(option.dataset.reminderLineIndex);
   }
 
   function appendIcon(button, iconId) {
@@ -996,12 +1158,19 @@
       due.textContent = App.Reminders.formatDueAt(reminder.dueAt);
       const meta = document.createElement("span");
       meta.className = "reminder-row-meta";
-      const metaParts = [App.Reminders.statusLabel(reminder.status)];
-      if (reminder.soundEnabled) {
-        metaParts.push("Ton");
-      }
-      if (reminder.anchor) {
-        metaParts.push("Auswahl");
+      const selectedLineCount = reminder.lineSelection && reminder.lineSelection.selectedLineTexts
+        ? reminder.lineSelection.selectedLineTexts.length
+        : 0;
+      const metaParts = [
+        App.Reminders.statusLabel(reminder.status),
+        App.Reminders.notificationLabel(reminder),
+        reminder.soundEnabled ? "Ton an" : "Ton aus",
+        reminder.tabBlinkEnabled ? "Tab blinkt" : "Tab ruhig"
+      ];
+      if (selectedLineCount) {
+        metaParts.push(`${selectedLineCount} ${selectedLineCount === 1 ? "Zeile" : "Zeilen"}`);
+      } else if (reminder.anchor) {
+        metaParts.push("alte Auswahl");
       }
       meta.textContent = metaParts.join(" | ");
       const excerpt = document.createElement("span");
@@ -1045,6 +1214,15 @@
       return;
     }
 
+    const browserNotificationEnabled = elements.browserNotification ? elements.browserNotification.checked : true;
+    const appDialogEnabled = elements.appDialog ? elements.appDialog.checked : true;
+    const tabBlinkEnabled = elements.tabBlink ? elements.tabBlink.checked : false;
+    if (!browserNotificationEnabled && !appDialogEnabled) {
+      setReminderFormError("Bitte mindestens Browser-Benachrichtigung oder App-Dialog aktivieren.");
+      return;
+    }
+
+    const lineSelection = currentReminderDraftLineSelection(note) || reminderDraftLineSelection;
     const reminderId = elements.reminderId.value;
     const existing = reminderId ? App.Reminders.findReminder(note, reminderId) : null;
     let nextReminder;
@@ -1054,7 +1232,11 @@
           dueAt,
           previewText: elements.previewText.value,
           soundEnabled: elements.soundEnabled.checked,
-          anchor: reminderDraftAnchor,
+          browserNotificationEnabled,
+          appDialogEnabled,
+          tabBlinkEnabled,
+          anchor: null,
+          lineSelection,
           status: "active",
           triggeredAt: "",
           missedAt: "",
@@ -1065,7 +1247,10 @@
           dueAt,
           previewText: elements.previewText.value,
           soundEnabled: elements.soundEnabled.checked,
-          anchor: reminderDraftAnchor
+          browserNotificationEnabled,
+          appDialogEnabled,
+          tabBlinkEnabled,
+          lineSelection
         });
     } catch (error) {
       setReminderFormError(error.message || "Die Erinnerung konnte nicht erstellt werden.");
@@ -1078,9 +1263,12 @@
       return;
     }
 
-    await App.Notifications.requestPermissionIfUseful();
-    resetReminderForm(noteById(note.id), { keepAnchor: false });
+    const permission = await App.Notifications.requestPermissionIfUseful({ enabled: browserNotificationEnabled });
+    resetReminderForm(noteById(note.id), { keepSelection: false });
     App.UI.showToast(existing ? "Erinnerung aktualisiert." : "Erinnerung gesetzt.");
+    if (browserNotificationEnabled && permission !== "granted" && permission !== "skipped") {
+      App.UI.showToast("Browser-Benachrichtigungen sind nicht erlaubt. Fällige Erinnerungen erscheinen als App-Dialog.", "error");
+    }
   }
 
   async function handleReminderListClick(event) {
@@ -1111,7 +1299,7 @@
       const nextReminders = App.Reminders.withoutReminder(note.reminders, reminder.reminderId, note.id);
       const saved = await saveNoteReminders(note.id, nextReminders);
       if (saved) {
-        resetReminderForm(noteById(note.id), { keepAnchor: false });
+        resetReminderForm(noteById(note.id), { keepSelection: false });
         App.UI.showToast("Erinnerung gelöscht.");
       }
       return;
@@ -1131,14 +1319,26 @@
     setReminderFormDueAt(reminder.dueAt);
     elements.previewText.value = reminder.previewText || "";
     elements.soundEnabled.checked = Boolean(reminder.soundEnabled);
-    if (elements.selectionSource) {
-      elements.selectionSource.value = note ? note.content || "" : "";
+    if (elements.browserNotification) {
+      elements.browserNotification.checked = reminder.browserNotificationEnabled !== false;
     }
-    reminderDraftAnchor = reminder.anchor || null;
+    if (elements.appDialog) {
+      elements.appDialog.checked = reminder.appDialogEnabled !== false;
+    }
+    if (elements.tabBlink) {
+      elements.tabBlink.checked = Boolean(reminder.tabBlinkEnabled);
+    }
+    const resolvedSelection = reminder.lineSelection
+      ? App.Reminders.resolveLineSelection(note && note.content, reminder.lineSelection)
+      : null;
+    const lineSelection = resolvedSelection && resolvedSelection.found
+      ? App.Reminders.createLineSelection(note && note.content, resolvedSelection.ranges.map((range) => range.lineIndex))
+      : (reminder.lineSelection || App.Reminders.createLineSelectionFromAnchor(note && note.content, reminder.anchor));
+    setReminderDraftLineSelection(lineSelection);
     if (elements.formTitle) {
       elements.formTitle.textContent = "Erinnerung bearbeiten";
     }
-    renderDraftAnchor();
+    renderDraftLineSelection(note);
     setReminderFormError("");
     elements.date.focus();
   }
@@ -1287,18 +1487,28 @@
     const latestReminder = App.Reminders.findReminder(latestNote, reminderId) || updatedReminder;
 
     if (saved) {
+      const selectionResolution = App.Reminders.resolveReminderSelection(latestNote, latestReminder);
+      const selectionWarning = reminderSelectionWarning(selectionResolution);
       await App.Notifications.playTone(latestReminder.soundEnabled);
       await App.Notifications.notifyReminder({
         title: `${status === "missed" ? "Verpasst" : "Erinnerung"}: ${latestNote.title || "Unbenannte Notiz"}`,
-        body: App.Reminders.excerptForReminder(latestNote, latestReminder),
+        noteTitle: latestNote.title || "Unbenannte Notiz",
+        previewText: latestReminder.previewText || "",
+        body: latestReminder.previewText || "",
+        dueAtLabel: App.Reminders.formatDueAt(latestReminder.dueAt),
+        selectedLines: App.Reminders.selectedLineTextsForReminder(latestReminder),
+        warning: selectionWarning,
         tag: `${latestNote.id}-${latestReminder.reminderId}`,
         status,
+        browserNotificationEnabled: latestReminder.browserNotificationEnabled,
+        appDialogEnabled: latestReminder.appDialogEnabled,
+        tabBlinkEnabled: latestReminder.tabBlinkEnabled,
         onClick: () => {
           void openTriggeredReminder(latestNote.id, latestReminder.reminderId);
         }
       });
 
-      if (selectedId === latestNote.id && latestReminder.anchor) {
+      if (selectedId === latestNote.id && selectionResolution.hasSelection) {
         applyReminderHighlight(latestNote, latestReminder, { silent: true });
       }
     }
@@ -1327,13 +1537,39 @@
     }
   }
 
+  function reminderSelectionWarning(resolution) {
+    if (!resolution || !resolution.hasSelection) {
+      return "";
+    }
+    if (resolution.partial) {
+      return "Einige gespeicherte Notizzeilen wurden nicht mehr eindeutig gefunden.";
+    }
+    if (resolution.stale) {
+      return "Die ursprüngliche Auswahl hat sich verändert und wurde nur über ihre alte Position geöffnet.";
+    }
+    if (!resolution.found) {
+      return "Die ursprüngliche Zeilenauswahl wurde nicht mehr eindeutig gefunden.";
+    }
+    return "";
+  }
+
   function applyReminderHighlight(note, reminder, options = {}) {
-    if (!App.Highlighting || !reminder.anchor) {
+    if (!App.Highlighting || !App.Reminders) {
+      return { found: false };
+    }
+    const selectionResolution = App.Reminders.resolveReminderSelection(note, reminder);
+    if (!selectionResolution.hasSelection) {
       return { found: false };
     }
     const result = App.Highlighting.highlight(note, reminder);
-    if (!result.found && !options.silent) {
-      App.UI.showToast("Der markierte Notizbereich wurde nicht mehr eindeutig gefunden.", "error");
+    if (!options.silent) {
+      if (result.partial) {
+        App.UI.showToast("Einige gespeicherte Notizzeilen wurden nicht mehr eindeutig gefunden.", "error");
+      } else if (!result.found) {
+        App.UI.showToast("Der markierte Notizbereich wurde nicht mehr eindeutig gefunden.", "error");
+      } else if (result.stale) {
+        App.UI.showToast("Die ursprüngliche Auswahl hat sich verändert.", "error");
+      }
     }
     return result;
   }

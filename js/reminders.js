@@ -2,10 +2,12 @@
   "use strict";
 
   const App = global.NotizenApp || (global.NotizenApp = {});
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   const VALID_STATUSES = new Set(["active", "triggered", "missed", "dismissed"]);
   const MAX_PREVIEW_LENGTH = 240;
   const MAX_ANCHOR_TEXT_LENGTH = 2000;
+  const MAX_LINE_TEXT_LENGTH = 1000;
+  const MAX_SELECTED_LINES = 80;
   const MAX_CONTEXT_LENGTH = 90;
   const MAX_REMINDER_ID_LENGTH = 160;
   const GERMANY_TIME_ZONE = "Europe/Berlin";
@@ -23,6 +25,10 @@
 
   function cleanText(value, maxLength) {
     return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  }
+
+  function cleanLineText(value) {
+    return String(value || "").replace(/\r\n?/g, "\n").split("\n")[0].slice(0, MAX_LINE_TEXT_LENGTH);
   }
 
   function pad(number) {
@@ -86,6 +92,49 @@
     return Math.min(number, Math.max(0, max));
   }
 
+  function firstDefined(...values) {
+    return values.find((value) => value !== undefined && value !== null);
+  }
+
+  function booleanOption(value, fallback) {
+    return typeof value === "boolean" ? value : fallback;
+  }
+
+  function normalizeContent(content) {
+    return String(content || "").replace(/\r\n?/g, "\n");
+  }
+
+  function textHash(value) {
+    const text = String(value || "");
+    let hash = 2166136261;
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function contentLines(content) {
+    const value = normalizeContent(content);
+    if (!value.length) {
+      return [];
+    }
+
+    let start = 0;
+    return value.split("\n").map((text, index) => {
+      const end = start + text.length;
+      const line = {
+        index,
+        text,
+        start,
+        end,
+        hash: textHash(text)
+      };
+      start = end + 1;
+      return line;
+    });
+  }
+
   function normalizeAnchor(anchor) {
     if (!anchor || typeof anchor !== "object" || Array.isArray(anchor)) {
       return null;
@@ -110,6 +159,172 @@
     };
   }
 
+  function contextForLine(content, line) {
+    return {
+      before: content.slice(Math.max(0, line.start - MAX_CONTEXT_LENGTH), line.start),
+      after: content.slice(line.end, line.end + MAX_CONTEXT_LENGTH)
+    };
+  }
+
+  function normalizeLineEntry(entry, fallbackIndex = -1, fallbackText = "") {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      entry = {};
+    }
+
+    const indexValue = firstDefined(entry.index, entry.lineIndex, fallbackIndex);
+    const index = Number.isInteger(indexValue) && indexValue >= 0 ? indexValue : -1;
+    const text = cleanLineText(firstDefined(entry.text, entry.lineText, fallbackText, ""));
+    const before = String(entry.before || "").slice(-MAX_CONTEXT_LENGTH);
+    const after = String(entry.after || "").slice(0, MAX_CONTEXT_LENGTH);
+    const hash = String(entry.hash || (text || text === "" ? textHash(text) : "")).slice(0, 32);
+
+    if (!text.trim()) {
+      return null;
+    }
+
+    return {
+      index,
+      text,
+      before,
+      after,
+      hash
+    };
+  }
+
+  function normalizeLineSelection(selection) {
+    if (!selection || typeof selection !== "object" || Array.isArray(selection)) {
+      return null;
+    }
+
+    const rawLines = Array.isArray(selection.lines) ? selection.lines : [];
+    const rawIndexes = Array.isArray(selection.selectedLineIndexes) ? selection.selectedLineIndexes : [];
+    const rawTexts = Array.isArray(selection.selectedLineTexts) ? selection.selectedLineTexts : [];
+    const entries = [];
+
+    rawLines.forEach((line) => {
+      const entry = normalizeLineEntry(line);
+      if (entry) {
+        entries.push(entry);
+      }
+    });
+
+    rawIndexes.forEach((rawIndex, itemIndex) => {
+      const index = Number(rawIndex);
+      const entry = normalizeLineEntry({}, Number.isInteger(index) ? index : -1, rawTexts[itemIndex] || "");
+      if (entry) {
+        entries.push(entry);
+      }
+    });
+
+    if (!entries.length && rawTexts.length) {
+      rawTexts.forEach((text) => {
+        const entry = normalizeLineEntry({}, -1, text);
+        if (entry) {
+          entries.push(entry);
+        }
+      });
+    }
+
+    const seen = new Set();
+    const lines = [];
+    entries.forEach((entry) => {
+      const key = `${entry.index}:${entry.hash}:${entry.text}`;
+      if (seen.has(key) || lines.length >= MAX_SELECTED_LINES) {
+        return;
+      }
+      seen.add(key);
+      lines.push(entry);
+    });
+
+    if (!lines.length) {
+      return null;
+    }
+
+    return {
+      selectedLineIndexes: lines.map((line) => line.index).filter((index) => index >= 0),
+      selectedLineTexts: lines.map((line) => line.text),
+      lines
+    };
+  }
+
+  function createLineSelection(content, selectedIndexes) {
+    const value = normalizeContent(content);
+    const lines = contentLines(value);
+    const indexes = Array.from(new Set((Array.isArray(selectedIndexes) ? selectedIndexes : [])
+      .map((index) => Number(index))
+      .filter((index) => Number.isInteger(index) && index >= 0)))
+      .sort((a, b) => a - b)
+      .slice(0, MAX_SELECTED_LINES);
+
+    const selectedLines = indexes
+      .map((index) => lines[index])
+      .filter((line) => line && line.text.trim())
+      .map((line) => {
+        const context = contextForLine(value, line);
+        return {
+          index: line.index,
+          text: cleanLineText(line.text),
+          before: context.before,
+          after: context.after,
+          hash: textHash(line.text)
+        };
+      });
+
+    return normalizeLineSelection({
+      selectedLineIndexes: selectedLines.map((line) => line.index),
+      selectedLineTexts: selectedLines.map((line) => line.text),
+      lines: selectedLines
+    });
+  }
+
+  function createLineSelectionFromRange(content, start, end) {
+    const value = normalizeContent(content);
+    const cleanStart = clampIndex(start, value.length);
+    const cleanEnd = clampIndex(end, value.length);
+    if (cleanStart < 0 || cleanEnd <= cleanStart) {
+      return null;
+    }
+
+    const indexes = contentLines(value)
+      .filter((line) => {
+        const lineEnd = Math.max(line.end, Math.min(value.length, line.start + 1));
+        return cleanStart < lineEnd && cleanEnd > line.start;
+      })
+      .map((line) => line.index);
+
+    return createLineSelection(value, indexes);
+  }
+
+  function createTextAnchor(content, start, end) {
+    const value = normalizeContent(content);
+    const cleanStart = clampIndex(start, value.length);
+    const cleanEnd = clampIndex(end, value.length);
+    if (cleanStart < 0 || cleanEnd <= cleanStart) {
+      return null;
+    }
+
+    const text = value.slice(cleanStart, cleanEnd);
+    if (!text.trim()) {
+      return null;
+    }
+
+    return {
+      start: cleanStart,
+      end: cleanEnd,
+      text: text.slice(0, MAX_ANCHOR_TEXT_LENGTH),
+      before: value.slice(Math.max(0, cleanStart - MAX_CONTEXT_LENGTH), cleanStart),
+      after: value.slice(cleanEnd, cleanEnd + MAX_CONTEXT_LENGTH)
+    };
+  }
+
+  function createLineSelectionFromAnchor(content, anchor) {
+    const resolved = resolveAnchor(content, anchor);
+    if (!resolved.found) {
+      return null;
+    }
+    return createLineSelectionFromRange(content, resolved.start, resolved.end);
+  }
+
   function normalizeReminder(reminder, noteId) {
     if (!reminder || typeof reminder !== "object" || Array.isArray(reminder)) {
       return null;
@@ -128,6 +343,23 @@
     const triggeredAt = validIso(reminder.triggeredAt);
     const missedAt = validIso(reminder.missedAt);
     const dismissedAt = validIso(reminder.dismissedAt);
+    const browserNotificationEnabled = booleanOption(
+      firstDefined(reminder.browserNotificationEnabled, reminder.showBrowserNotification, reminder.browserEnabled),
+      true
+    );
+    let appDialogEnabled = booleanOption(
+      firstDefined(reminder.appDialogEnabled, reminder.inAppDialogEnabled, reminder.showAppDialog),
+      true
+    );
+    if (!browserNotificationEnabled && !appDialogEnabled) {
+      appDialogEnabled = true;
+    }
+
+    const lineSelection = normalizeLineSelection(reminder.lineSelection || {
+      selectedLineIndexes: reminder.selectedLineIndexes,
+      selectedLineTexts: reminder.selectedLineTexts,
+      lines: reminder.selectedLines
+    });
 
     return {
       schemaVersion: SCHEMA_VERSION,
@@ -136,7 +368,11 @@
       dueAt,
       previewText: cleanText(reminder.previewText || reminder.text || reminder.message, MAX_PREVIEW_LENGTH),
       soundEnabled: Boolean(reminder.soundEnabled),
+      browserNotificationEnabled,
+      appDialogEnabled,
+      tabBlinkEnabled: Boolean(reminder.tabBlinkEnabled),
       anchor: normalizeAnchor(reminder.anchor || reminder.highlight),
+      lineSelection,
       status,
       createdAt,
       updatedAt,
@@ -160,47 +396,39 @@
       .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
   }
 
-  function createTextAnchor(content, start, end) {
-    const value = String(content || "");
-    const cleanStart = clampIndex(start, value.length);
-    const cleanEnd = clampIndex(end, value.length);
-    if (cleanStart < 0 || cleanEnd <= cleanStart) {
-      return null;
-    }
-
-    const text = value.slice(cleanStart, cleanEnd);
-    if (!text.trim()) {
-      return null;
-    }
-
-    return {
-      start: cleanStart,
-      end: cleanEnd,
-      text: text.slice(0, MAX_ANCHOR_TEXT_LENGTH),
-      before: value.slice(Math.max(0, cleanStart - MAX_CONTEXT_LENGTH), cleanStart),
-      after: value.slice(cleanEnd, cleanEnd + MAX_CONTEXT_LENGTH)
-    };
-  }
-
-  function createReminder({ noteId, dueAt, previewText = "", soundEnabled = false, anchor = null } = {}) {
+  function createReminder({
+    noteId,
+    dueAt,
+    previewText = "",
+    soundEnabled = false,
+    browserNotificationEnabled = true,
+    appDialogEnabled = true,
+    tabBlinkEnabled = false,
+    anchor = null,
+    lineSelection = null
+  } = {}) {
     const dueIso = validIso(dueAt);
     if (!dueIso) {
       throw new Error("Ungültiger Erinnerungszeitpunkt.");
     }
 
     const createdAt = nowIso();
-    return {
+    return normalizeReminder({
       schemaVersion: SCHEMA_VERSION,
       reminderId: makeReminderId(),
       noteId: String(noteId || ""),
       dueAt: dueIso,
-      previewText: cleanText(previewText, MAX_PREVIEW_LENGTH),
-      soundEnabled: Boolean(soundEnabled),
-      anchor: normalizeAnchor(anchor),
+      previewText,
+      soundEnabled,
+      browserNotificationEnabled,
+      appDialogEnabled,
+      tabBlinkEnabled,
+      anchor,
+      lineSelection,
       status: "active",
       createdAt,
       updatedAt: createdAt
-    };
+    }, noteId);
   }
 
   function updateReminder(reminder, patch) {
@@ -281,7 +509,7 @@
   }
 
   function resolveAnchor(content, anchor) {
-    const value = String(content || "");
+    const value = normalizeContent(content);
     const cleanAnchor = normalizeAnchor(anchor);
     if (!cleanAnchor) {
       return { found: false, reason: "no-anchor" };
@@ -349,6 +577,151 @@
     return { found: false, reason: "not-found" };
   }
 
+  function contextScoreForLine(content, line, entry) {
+    let score = 0;
+    if (entry.before && content.slice(Math.max(0, line.start - entry.before.length), line.start) === entry.before) {
+      score += 6;
+    }
+    if (entry.after && content.slice(line.end, line.end + entry.after.length) === entry.after) {
+      score += 6;
+    }
+    if (entry.index >= 0) {
+      score -= Math.abs(entry.index - line.index) / 100;
+    }
+    return score;
+  }
+
+  function rangeForLine(content, line) {
+    let end = line.end;
+    if (end <= line.start && line.start < content.length) {
+      end = line.start + 1;
+    }
+    return {
+      start: Math.max(0, line.start),
+      end: Math.max(Math.max(0, line.start), Math.min(content.length, end)),
+      text: line.text,
+      lineIndex: line.index
+    };
+  }
+
+  function lineMatchesEntry(line, entry) {
+    if (!line || !entry) {
+      return false;
+    }
+    if (entry.hash && line.hash === entry.hash) {
+      return true;
+    }
+    if (entry.text || entry.text === "") {
+      return line.text === entry.text;
+    }
+    return false;
+  }
+
+  function resolveLineEntry(content, lines, entry, usedLineIndexes) {
+    const indexedLine = entry.index >= 0 ? lines[entry.index] : null;
+    if (indexedLine && !usedLineIndexes.has(indexedLine.index) && lineMatchesEntry(indexedLine, entry)) {
+      return { found: true, line: indexedLine };
+    }
+
+    const exactCandidates = lines.filter((line) =>
+      !usedLineIndexes.has(line.index)
+      && (
+        (entry.hash && line.hash === entry.hash)
+        || (entry.text && line.text === entry.text)
+      )
+    );
+
+    if (exactCandidates.length === 1) {
+      return { found: true, line: exactCandidates[0] };
+    }
+
+    if (exactCandidates.length > 1) {
+      const scored = exactCandidates
+        .map((line) => ({ line, score: contextScoreForLine(content, line, entry) }))
+        .sort((a, b) => b.score - a.score);
+      if (scored[0] && scored[0].score > 0 && (!scored[1] || scored[0].score > scored[1].score)) {
+        return { found: true, line: scored[0].line };
+      }
+      return { found: false, reason: "ambiguous" };
+    }
+
+    if (entry.text) {
+      const prefixCandidates = lines.filter((line) =>
+        !usedLineIndexes.has(line.index)
+        && line.text.startsWith(entry.text)
+      );
+      if (prefixCandidates.length === 1) {
+        return { found: true, line: prefixCandidates[0] };
+      }
+    }
+
+    return { found: false, reason: "not-found" };
+  }
+
+  function resolveLineSelection(content, selection) {
+    const value = normalizeContent(content);
+    const cleanSelection = normalizeLineSelection(selection);
+    if (!cleanSelection) {
+      return { found: false, hasSelection: false, reason: "no-selection", ranges: [], missing: [] };
+    }
+
+    const lines = contentLines(value);
+    const usedLineIndexes = new Set();
+    const ranges = [];
+    const missing = [];
+
+    cleanSelection.lines.forEach((entry) => {
+      const resolved = resolveLineEntry(value, lines, entry, usedLineIndexes);
+      if (resolved.found && resolved.line) {
+        usedLineIndexes.add(resolved.line.index);
+        ranges.push(rangeForLine(value, resolved.line));
+      } else {
+        missing.push({ entry, reason: resolved.reason || "not-found" });
+      }
+    });
+
+    ranges.sort((a, b) => a.start - b.start);
+    return {
+      found: ranges.length > 0,
+      hasSelection: true,
+      partial: ranges.length > 0 && missing.length > 0,
+      reason: ranges.length ? (missing.length ? "partial" : "") : (missing[0] && missing[0].reason) || "not-found",
+      ranges,
+      missing,
+      foundCount: ranges.length,
+      missingCount: missing.length,
+      totalCount: cleanSelection.lines.length
+    };
+  }
+
+  function resolveReminderSelection(note, reminder) {
+    const cleanReminder = normalizeReminder(reminder, note && note.id);
+    if (!cleanReminder) {
+      return { found: false, hasSelection: false, reason: "no-reminder", ranges: [] };
+    }
+
+    if (cleanReminder.lineSelection) {
+      return {
+        type: "lines",
+        ...resolveLineSelection(note && note.content, cleanReminder.lineSelection)
+      };
+    }
+
+    if (cleanReminder.anchor) {
+      const resolved = resolveAnchor(note && note.content, cleanReminder.anchor);
+      return {
+        type: "anchor",
+        hasSelection: true,
+        ...resolved,
+        ranges: resolved.found
+          ? [{ start: resolved.start, end: resolved.end, text: resolved.text || cleanReminder.anchor.text || "" }]
+          : []
+      };
+    }
+
+    return { found: false, hasSelection: false, reason: "no-selection", ranges: [] };
+  }
+
   function stripMarkdown(content) {
     return String(content || "")
       .replace(/```[\s\S]*?```/g, " Code-Block ")
@@ -365,10 +738,39 @@
       .trim();
   }
 
+  function lineSelectionExcerpt(selection, maxLength = MAX_PREVIEW_LENGTH) {
+    const cleanSelection = normalizeLineSelection(selection);
+    if (!cleanSelection) {
+      return "";
+    }
+
+    const parts = cleanSelection.lines
+      .map((line) => cleanText(line.text, 120))
+      .filter(Boolean);
+    if (!parts.length) {
+      return "";
+    }
+
+    const text = parts.join(" / ");
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+  }
+
+  function selectedLineTextsForReminder(reminder) {
+    const cleanSelection = normalizeLineSelection(reminder && reminder.lineSelection);
+    return cleanSelection
+      ? cleanSelection.lines.map((line) => line.text)
+      : [];
+  }
+
   function excerptForReminder(note, reminder) {
     const cleanReminder = normalizeReminder(reminder, note && note.id);
     if (!cleanReminder) {
       return "";
+    }
+
+    const lineText = lineSelectionExcerpt(cleanReminder.lineSelection);
+    if (lineText) {
+      return lineText;
     }
 
     const anchorText = cleanReminder.anchor && cleanReminder.anchor.text
@@ -383,6 +785,17 @@
 
     const text = stripMarkdown(note && note.content);
     return text ? (text.length > MAX_PREVIEW_LENGTH ? `${text.slice(0, MAX_PREVIEW_LENGTH - 1)}...` : text) : "Keine Vorschau";
+  }
+
+  function notificationLabel(reminder) {
+    const cleanReminder = normalizeReminder(reminder, reminder && reminder.noteId);
+    if (!cleanReminder) {
+      return "App-Dialog";
+    }
+    if (cleanReminder.browserNotificationEnabled && cleanReminder.appDialogEnabled) {
+      return "Browser + App-Dialog";
+    }
+    return cleanReminder.browserNotificationEnabled ? "Browser" : "App-Dialog";
   }
 
   function formatDueAt(value) {
@@ -502,9 +915,18 @@
     findReminder,
     activeReminders,
     noteSummary,
+    contentLines,
     createTextAnchor,
+    createLineSelection,
+    createLineSelectionFromRange,
+    createLineSelectionFromAnchor,
     resolveAnchor,
+    resolveLineSelection,
+    resolveReminderSelection,
+    selectedLineTextsForReminder,
+    lineSelectionExcerpt,
     excerptForReminder,
+    notificationLabel,
     formatDueAt,
     formatShortDueAt,
     statusLabel,

@@ -2,6 +2,7 @@
   "use strict";
 
   const App = global.NotizenApp || (global.NotizenApp = {});
+  const TOAST_HIDE_ANIMATION_MS = 260;
   const MOBILE_LAYOUT_QUERY = "(max-width: 980px), (max-height: 560px) and (hover: none)";
   const elements = {};
   const REQUIRED_ELEMENTS = [
@@ -27,7 +28,20 @@
     ["exportFormat", "exportFormat"]
   ];
   const SIDEBAR_TRANSITION_MS = 240;
+  const TOOLTIP_SHOW_DELAY_MS = 420;
+  const TOOLTIP_FOCUS_DELAY_MS = 180;
+  const TOOLTIP_HIDE_DELAY_MS = 90;
+  const TOOLTIP_CLICK_SUPPRESS_MS = 900;
   let tooltipTarget = null;
+  let tooltipPointerTarget = null;
+  let tooltipPendingTarget = null;
+  let tooltipShowTimer = 0;
+  let tooltipHideTimer = 0;
+  let tooltipSuppressTarget = null;
+  let tooltipSuppressUntil = 0;
+  let tooltipKeyboardMode = false;
+  let lastPointerX = -1;
+  let lastPointerY = -1;
   let contextMenuHandler = null;
   let sidebarCloseTimer = 0;
   let mobileLayoutQuery = null;
@@ -93,6 +107,17 @@
         event.preventDefault();
         closeDialog(dialog, "cancel");
       });
+
+      dialog.addEventListener("pointerdown", (event) => {
+        dialog.dataset.backdropPointer = event.target === dialog ? "true" : "false";
+      });
+
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog && dialog.dataset.backdropPointer === "true") {
+          closeDialog(dialog, "cancel");
+        }
+        delete dialog.dataset.backdropPointer;
+      });
     });
   }
 
@@ -137,49 +162,171 @@
     document.body.append(elements.tooltip);
 
     document.addEventListener("pointerover", (event) => {
+      rememberPointer(event);
       const target = closestTarget(event.target, "[data-tooltip]");
-      if (target && target !== tooltipTarget) {
-        showTooltip(target);
+      if (target && target !== tooltipPointerTarget) {
+        tooltipPointerTarget = target;
+        scheduleTooltip(target, { delay: TOOLTIP_SHOW_DELAY_MS, pointer: true });
       }
     });
 
+    document.addEventListener("pointermove", (event) => {
+      rememberPointer(event);
+      if (tooltipPointerTarget && !isPointerOverTooltipTarget(tooltipPointerTarget)) {
+        const previous = tooltipPointerTarget;
+        tooltipPointerTarget = null;
+        if (tooltipPendingTarget === previous || tooltipTarget === previous) {
+          hideTooltip({ immediate: true });
+        }
+      }
+    }, true);
+
     document.addEventListener("pointerout", (event) => {
-      if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget)) {
-        hideTooltip();
+      rememberPointer(event);
+      const target = closestTarget(event.target, "[data-tooltip]");
+      if (target && !target.contains(event.relatedTarget)) {
+        if (tooltipPointerTarget === target) {
+          tooltipPointerTarget = null;
+        }
+        if (tooltipSuppressTarget === target) {
+          tooltipSuppressTarget = null;
+          tooltipSuppressUntil = 0;
+        }
+        if (tooltipPendingTarget === target || tooltipTarget === target) {
+          hideTooltip({ immediate: true });
+        }
       }
     });
 
     document.addEventListener("focusin", (event) => {
       const target = closestTarget(event.target, "[data-tooltip]");
-      if (target) {
-        showTooltip(target);
+      if (target && shouldShowFocusTooltip(target)) {
+        scheduleTooltip(target, { delay: TOOLTIP_FOCUS_DELAY_MS, pointer: false });
       }
     });
 
     document.addEventListener("focusout", (event) => {
-      if (event.target === tooltipTarget || closestTarget(event.target, "[data-tooltip]") === tooltipTarget) {
-        hideTooltip();
+      const target = closestTarget(event.target, "[data-tooltip]");
+      if (target && (target === tooltipTarget || target === tooltipPendingTarget)) {
+        hideTooltip({ immediate: true });
       }
     });
 
-    document.addEventListener("click", hideTooltip);
-    global.addEventListener("resize", hideTooltip);
-    document.addEventListener("scroll", hideTooltip, true);
+    document.addEventListener("pointerdown", (event) => {
+      tooltipKeyboardMode = false;
+      rememberPointer(event);
+      tooltipSuppressTarget = closestTarget(event.target, "[data-tooltip]");
+      tooltipSuppressUntil = tooltipSuppressTarget ? Date.now() + TOOLTIP_CLICK_SUPPRESS_MS : 0;
+      hideTooltip({ immediate: true });
+    }, true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Tab") {
+        tooltipKeyboardMode = true;
+      }
+    }, true);
+    document.addEventListener("click", () => hideTooltip({ immediate: true }), true);
+    global.addEventListener("resize", () => hideTooltip({ immediate: true }));
+    document.addEventListener("scroll", () => hideTooltip({ immediate: true }), true);
   }
 
-  function showTooltip(target) {
+  function isTooltipSuppressed(target) {
+    if (target === tooltipSuppressTarget && Date.now() < tooltipSuppressUntil) {
+      return true;
+    }
+    if (tooltipSuppressTarget && Date.now() >= tooltipSuppressUntil) {
+      tooltipSuppressTarget = null;
+      tooltipSuppressUntil = 0;
+    }
+    return false;
+  }
+
+  function rememberPointer(event) {
+    if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+    }
+  }
+
+  function isPointerOverTooltipTarget(target) {
+    if (lastPointerX < 0 || lastPointerY < 0 || !target || !document.documentElement.contains(target)) {
+      return false;
+    }
+    const hit = document.elementFromPoint(lastPointerX, lastPointerY);
+    return Boolean(hit && (hit === target || target.contains(hit) || closestTarget(hit, "[data-tooltip]") === target));
+  }
+
+  function shouldShowFocusTooltip(target) {
+    if (tooltipKeyboardMode) {
+      return true;
+    }
+    try {
+      return target.matches(":focus-visible");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function cancelTooltipShow() {
+    global.clearTimeout(tooltipShowTimer);
+    tooltipShowTimer = 0;
+    tooltipPendingTarget = null;
+  }
+
+  function scheduleTooltip(target, options = {}) {
     const text = target.getAttribute("data-tooltip");
     if (!text || target.disabled) {
       return;
     }
+    if (isTooltipSuppressed(target)) {
+      return;
+    }
+    if (tooltipTarget === target && !elements.tooltip.hidden) {
+      return;
+    }
+
+    cancelTooltipShow();
+    global.clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = 0;
+
+    const delay = Number.isFinite(options.delay) ? options.delay : TOOLTIP_SHOW_DELAY_MS;
+    tooltipPendingTarget = target;
+    tooltipShowTimer = global.setTimeout(() => {
+      if (
+        tooltipPendingTarget !== target
+        || !document.documentElement.contains(target)
+        || isTooltipSuppressed(target)
+        || (options.pointer && (tooltipPointerTarget !== target || !isPointerOverTooltipTarget(target)))
+      ) {
+        return;
+      }
+      showTooltipNow(target);
+    }, Math.max(0, delay));
+  }
+
+  function showTooltipNow(target) {
+    const text = target.getAttribute("data-tooltip");
+    if (!text || target.disabled || isTooltipSuppressed(target)) {
+      return;
+    }
 
     tooltipTarget = target;
+    tooltipPendingTarget = null;
+    global.clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = 0;
     const modalHost = moveTooltipToHost(target);
     elements.tooltip.textContent = text;
     elements.tooltip.hidden = false;
     elements.tooltip.classList.remove("is-visible", "is-above", "is-below");
     positionTooltip(target, modalHost);
-    requestAnimationFrame(() => elements.tooltip.classList.add("is-visible"));
+    requestAnimationFrame(() => {
+      if (
+        tooltipTarget === target
+        && !elements.tooltip.hidden
+        && (tooltipPointerTarget !== target || isPointerOverTooltipTarget(target))
+      ) {
+        elements.tooltip.classList.add("is-visible");
+      }
+    });
   }
 
   function moveTooltipToHost(target) {
@@ -221,13 +368,17 @@
     elements.tooltip.classList.toggle("is-above", !placeBelow);
   }
 
-  function hideTooltip() {
+  function hideTooltip(options = {}) {
+    const immediate = Boolean(options && options.immediate);
+    cancelTooltipShow();
     tooltipTarget = null;
     if (!elements.tooltip) {
       return;
     }
+    global.clearTimeout(tooltipHideTimer);
+    tooltipHideTimer = 0;
     elements.tooltip.classList.remove("is-visible");
-    window.setTimeout(() => {
+    const finish = () => {
       if (!tooltipTarget) {
         elements.tooltip.hidden = true;
         elements.tooltip.classList.remove("is-in-modal", "is-above", "is-below");
@@ -235,7 +386,12 @@
           document.body.append(elements.tooltip);
         }
       }
-    }, 140);
+    };
+    if (immediate) {
+      finish();
+      return;
+    }
+    tooltipHideTimer = global.setTimeout(finish, TOOLTIP_HIDE_DELAY_MS);
   }
 
   function updateFontSizeOutput(value) {
@@ -249,6 +405,7 @@
     if (!dialog) {
       return;
     }
+    hideTooltip({ immediate: true });
     dialog.classList.remove("is-open", "is-closing");
     dialog.dataset.closing = "";
     dialog.returnValue = "";
@@ -257,7 +414,11 @@
     } else {
       dialog.setAttribute("open", "");
     }
-    requestAnimationFrame(() => dialog.classList.add("is-open"));
+    syncToastHost();
+    requestAnimationFrame(() => {
+      dialog.classList.add("is-open");
+      syncToastHost();
+    });
   }
 
   function openModalHost() {
@@ -285,7 +446,7 @@
       return;
     }
 
-    hideTooltip();
+    hideTooltip({ immediate: true });
     dialog.dataset.closing = "true";
     dialog.classList.remove("is-open");
     dialog.classList.add("is-closing");
@@ -566,13 +727,23 @@
     }
     syncToastHost();
     const toast = document.createElement("div");
-    toast.className = `toast ${type === "error" ? "error" : ""}`.trim();
-    toast.textContent = message;
+    const isError = type === "error";
+    toast.className = `toast ${isError ? "toast-error error" : "toast-info"}`;
+    toast.setAttribute("role", isError ? "alert" : "status");
+
+    const title = document.createElement("span");
+    title.className = "toast-title";
+    title.textContent = isError ? "Fehler" : "Hinweis";
+
+    const text = document.createElement("span");
+    text.className = "toast-message";
+    text.textContent = message;
+
+    toast.append(title, text);
     elements.toastStack.append(toast);
     setTimeout(() => {
-      toast.style.opacity = "0";
-      toast.style.transform = "translateY(8px)";
-      setTimeout(() => toast.remove(), 180);
+      toast.classList.add("is-hiding");
+      setTimeout(() => toast.remove(), TOAST_HIDE_ANIMATION_MS);
     }, 3600);
   }
 

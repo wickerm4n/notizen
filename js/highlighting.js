@@ -42,7 +42,7 @@
     textarea.scrollTop = Math.max(0, lineIndex * lineHeight - textarea.clientHeight * 0.35);
   }
 
-  function highlightTextarea(range) {
+  function highlightTextareaRanges(ranges) {
     const textarea = byId("noteEditor");
     if (!textarea || typeof textarea.setSelectionRange !== "function") {
       return false;
@@ -53,15 +53,23 @@
     }
 
     const content = textarea.value || "";
-    const start = Math.max(0, Math.min(range.start, content.length));
-    const end = Math.max(start, Math.min(range.end, content.length));
-    if (end <= start) {
+    const cleanRanges = (Array.isArray(ranges) ? ranges : [])
+      .map((range) => ({
+        start: Math.max(0, Math.min(Number(range.start) || 0, content.length)),
+        end: Math.max(0, Math.min(Number(range.end) || 0, content.length))
+      }))
+      .filter((range) => range.end > range.start)
+      .sort((a, b) => a.start - b.start);
+
+    if (!cleanRanges.length) {
       return false;
     }
 
+    const first = cleanRanges[0];
+    const last = cleanRanges[cleanRanges.length - 1];
     textarea.focus({ preventScroll: true });
-    textarea.setSelectionRange(start, end);
-    scrollTextareaToRange(textarea, content, start);
+    textarea.setSelectionRange(first.start, Math.max(first.end, last.end));
+    scrollTextareaToRange(textarea, content, first.start);
     activeTextarea = textarea;
     return true;
   }
@@ -90,17 +98,14 @@
     return mark;
   }
 
-  function highlightPreviewText(snippet) {
-    const preview = byId("markdownPreview");
-    const text = String(snippet || "").trim();
-    if (!preview || !text) {
-      return false;
-    }
+  function textNodeIsMarked(node) {
+    return node.parentElement && node.parentElement.closest("mark.reminder-preview-highlight");
+  }
 
-    const candidates = [text, plainSnippet(text)].filter(Boolean);
+  function collectPreviewTextNodes(preview) {
     const walker = document.createTreeWalker(preview, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return node.nodeValue && node.nodeValue.trim()
+        return node.nodeValue && node.nodeValue.trim() && !textNodeIsMarked(node)
           ? NodeFilter.FILTER_ACCEPT
           : NodeFilter.FILTER_REJECT;
       }
@@ -112,13 +117,29 @@
       nodes.push(node);
       node = walker.nextNode();
     }
+    return nodes;
+  }
+
+  function highlightPreviewSnippet(snippet, shouldScroll) {
+    const preview = byId("markdownPreview");
+    const text = String(snippet || "").trim();
+    if (!preview || !text) {
+      return false;
+    }
+
+    const candidates = [text, plainSnippet(text)]
+      .map((candidate) => candidate.trim())
+      .filter(Boolean);
 
     for (const candidate of candidates) {
+      const nodes = collectPreviewTextNodes(preview);
       for (const textNode of nodes) {
         const index = textNode.nodeValue.indexOf(candidate);
         if (index >= 0) {
           const mark = wrapTextNode(textNode, index, index + candidate.length);
-          mark.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (shouldScroll) {
+            mark.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
           return true;
         }
       }
@@ -127,23 +148,49 @@
     return false;
   }
 
+  function highlightPreviewSnippets(snippets) {
+    let highlighted = false;
+    let scrolled = false;
+    (Array.isArray(snippets) ? snippets : []).forEach((snippet) => {
+      const didHighlight = highlightPreviewSnippet(snippet, !scrolled);
+      highlighted = highlighted || didHighlight;
+      scrolled = scrolled || didHighlight;
+    });
+    return highlighted;
+  }
+
+  function rangeSnippet(note, range) {
+    if (range && range.text) {
+      return range.text;
+    }
+    const content = String(note && note.content || "");
+    const start = Math.max(0, Math.min(Number(range && range.start) || 0, content.length));
+    const end = Math.max(start, Math.min(Number(range && range.end) || 0, content.length));
+    return content.slice(start, end);
+  }
+
   function highlight(note, reminder) {
     clearHighlight();
-    if (!note || !reminder || !reminder.anchor || !App.Reminders) {
-      return { found: false, reason: "no-anchor" };
+    if (!note || !reminder || !App.Reminders) {
+      return { found: false, reason: "no-reminder" };
     }
 
     if (App.Editor && typeof App.Editor.syncPreview === "function") {
       App.Editor.syncPreview();
     }
 
-    const resolved = App.Reminders.resolveAnchor(note.content || "", reminder.anchor);
+    const resolved = App.Reminders.resolveReminderSelection(note, reminder);
+    if (!resolved.hasSelection) {
+      return { ...resolved, found: false, reason: "no-selection" };
+    }
     if (!resolved.found) {
       return resolved;
     }
 
-    const editorHighlighted = highlightTextarea(resolved);
-    const previewHighlighted = highlightPreviewText(resolved.text || reminder.anchor.text || "");
+    const ranges = Array.isArray(resolved.ranges) ? resolved.ranges : [];
+    const snippets = ranges.map((range) => rangeSnippet(note, range)).filter((snippet) => String(snippet || "").trim());
+    const editorHighlighted = highlightTextareaRanges(ranges);
+    const previewHighlighted = highlightPreviewSnippets(snippets);
     clearTimer = global.setTimeout(clearHighlight, HIGHLIGHT_MS);
 
     return {

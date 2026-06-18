@@ -7,10 +7,10 @@
   <meta name="description" content="Eine moderne, lokale Notizen-App für GitHub Pages.">
   <meta name="theme-color" content="#2f5f9e">
   <title>Notizen</title>
-  <link rel="icon" href="icons/favicon.svg?v=2026.06.17.4" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.17.4">
-  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.17.4">
-  <link rel="stylesheet" href="css/styles.css?v=2026.06.17.4">
+  <link rel="icon" href="icons/favicon.svg?v=2026.06.18.19" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/app-icon.svg?v=2026.06.18.19">
+  <link rel="manifest" href="assets/site.webmanifest?v=2026.06.18.19">
+  <link rel="stylesheet" href="css/styles.css?v=2026.06.18.19">
 </head>
 <body>
   <svg class="svg-sprite" aria-hidden="true" focusable="false">
@@ -36,7 +36,7 @@
   <div class="app-shell" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Notiznavigation">
       <div class="brand">
-        <img src="icons/app-icon.svg?v=2026.06.17.4" width="42" height="42" alt="">
+        <img src="icons/app-icon.svg?v=2026.06.18.19" width="42" height="42" alt="">
         <div>
           <strong>Notizen</strong>
           <span>Lokal und privat</span>
@@ -342,18 +342,34 @@
           <div class="reminder-time-grid">
             <label>
               <span>Datum</span>
-              <input class="text-field" name="reminderDate" type="date" required>
+              <input class="text-field" id="reminderDate" name="reminderDate" type="date" required>
             </label>
             <label>
               <span>Uhrzeit</span>
-              <input class="text-field" name="reminderTime" type="time" step="60" required>
+              <input class="text-field" id="reminderTime" name="reminderTime" type="time" step="60" required>
             </label>
           </div>
 
           <label>
-            <span>Vorschautext</span>
-            <textarea class="text-field reminder-preview-input" name="reminderPreviewText" maxlength="240" rows="3"></textarea>
+            <span>Hinweistext</span>
+            <textarea class="text-field reminder-preview-input" name="reminderPreviewText" maxlength="240" rows="3" placeholder="Optionalen Hinweistext eingeben"></textarea>
           </label>
+
+          <fieldset class="reminder-options-box">
+            <legend>Benachrichtigung</legend>
+            <label class="check-row">
+              <input name="reminderBrowserNotification" type="checkbox" checked>
+              <span>Browser-Benachrichtigung anzeigen</span>
+            </label>
+            <label class="check-row">
+              <input name="reminderAppDialog" type="checkbox" checked>
+              <span>Dialog in der App anzeigen</span>
+            </label>
+            <label class="check-row">
+              <input name="reminderTabBlink" type="checkbox">
+              <span>Tab blinken lassen, wenn Erinnerung ausgelöst wird</span>
+            </label>
+          </fieldset>
 
           <label class="check-row">
             <input name="reminderSoundEnabled" type="checkbox">
@@ -361,15 +377,13 @@
           </label>
 
           <div class="reminder-selection-box">
-            <span class="field-label">Textauswahl</span>
-            <label class="reminder-selection-source-label">
-              <span>Notiztext zum Markieren</span>
-              <textarea class="text-field reminder-selection-source" id="reminderSelectionSource" name="reminderSelectionSource" rows="5" readonly></textarea>
-            </label>
-            <p id="reminderSelectionPreview" class="reminder-selection-preview is-empty">Keine Textauswahl</p>
+            <span class="field-label">Notizzeilen auswählen</span>
+            <p class="reminder-selection-help">Klicke eine oder mehrere Zeilen an, die beim Erinnern hervorgehoben werden sollen.</p>
+            <div class="reminder-line-list" id="reminderLineList" role="listbox" aria-label="Notizzeilen auswählen" aria-multiselectable="true"></div>
+            <p id="reminderSelectionPreview" class="reminder-selection-preview is-empty">Keine Zeile ausgewählt</p>
             <div class="reminder-selection-actions">
-              <button class="button button-ghost" id="reminderUseSelectionButton" type="button">Markierung übernehmen</button>
-              <button class="button button-ghost" id="reminderClearSelectionButton" type="button">Entfernen</button>
+              <button class="button button-ghost" id="reminderUseSelectionButton" type="button">Zeilenauswahl übernehmen</button>
+              <button class="button button-ghost" id="reminderClearSelectionButton" type="button">Auswahl entfernen</button>
             </div>
           </div>
 
@@ -418,16 +432,16 @@
   </nav>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="js/storage.js?v=2026.06.17.4" defer></script>
-  <script src="js/notes.js?v=2026.06.17.4" defer></script>
-  <script src="js/markdown.js?v=2026.06.17.4" defer></script>
-  <script src="js/reminders.js?v=2026.06.17.4" defer></script>
-  <script src="js/notifications.js?v=2026.06.17.4" defer></script>
-  <script src="js/highlighting.js?v=2026.06.17.4" defer></script>
-  <script src="js/settings.js?v=2026.06.17.4" defer></script>
-  <script src="js/editor.js?v=2026.06.17.4" defer></script>
-  <script src="js/ui.js?v=2026.06.17.4" defer></script>
-  <script src="js/app.js?v=2026.06.17.4" defer></script>
-  <script src="js/update.js?v=2026.06.17.4" data-app-version="2026.06.17.4" defer></script>
+  <script src="js/storage.js?v=2026.06.18.19" defer></script>
+  <script src="js/notes.js?v=2026.06.18.19" defer></script>
+  <script src="js/markdown.js?v=2026.06.18.19" defer></script>
+  <script src="js/reminders.js?v=2026.06.18.19" defer></script>
+  <script src="js/notifications.js?v=2026.06.18.19" defer></script>
+  <script src="js/highlighting.js?v=2026.06.18.19" defer></script>
+  <script src="js/settings.js?v=2026.06.18.19" defer></script>
+  <script src="js/editor.js?v=2026.06.18.19" defer></script>
+  <script src="js/ui.js?v=2026.06.18.19" defer></script>
+  <script src="js/app.js?v=2026.06.18.19" defer></script>
+  <script src="js/update.js?v=2026.06.18.19" data-app-version="2026.06.18.19" defer></script>
 </body>
 </html>
